@@ -96,8 +96,10 @@
     .hint { border-left: 4px solid var(--primary); padding-left: 10px; }
     .scanner-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fbfcfa; }
     .scanner-panel[hidden] { display: none; }
-    #barcodeReader { width: 100%; overflow: hidden; border-radius: 12px; background: #111; }
-    #barcodeReader video { border-radius: 12px; }
+    #barcodeReader { position: relative; width: 100%; overflow: hidden; border-radius: 12px; background: #111; aspect-ratio: 4 / 3; }
+    #barcodeVideo { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
+    .scan-frame { position: absolute; left: 7%; right: 7%; top: 37%; height: 26%; border: 3px solid rgba(255,255,255,.92); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.18); pointer-events: none; }
+    .scan-line { position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: rgba(255,255,255,.95); pointer-events: none; }
     .scanner-status { margin: 8px 0 0; text-align: center; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
     nav button { background: #fff; color: var(--muted); border-radius: 0; padding: 12px 6px 10px; font-size: 0.78rem; font-weight: 700; }
@@ -124,7 +126,11 @@
           <button id="startScannerButton" class="secondary" type="button">📷 Barcode scannen</button>
         </div>
         <div id="scannerPanel" class="scanner-panel" hidden>
-          <div id="barcodeReader"></div>
+          <div id="barcodeReader">
+            <video id="barcodeVideo" playsinline muted autoplay></video>
+            <div class="scan-frame"></div>
+            <div class="scan-line"></div>
+          </div>
           <p id="scannerStatus" class="muted scanner-status">Kamera wird vorbereitet.</p>
           <button id="stopScannerButton" class="danger" type="button">Scanner schließen</button>
         </div>
@@ -175,7 +181,7 @@
     <button class="nav-btn" data-target="shopping"><span class="nav-icon">🛒</span>Einkauf</button>
   </nav>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
   <script>
     const localProducts = [
       { name: "Haferdrink", barcode: "100001", vegan: true, source: "Lokale Beispieldaten" },
@@ -198,7 +204,8 @@
     let pantry = JSON.parse(localStorage.getItem("veganPantry") || "[]");
     let shopping = JSON.parse(localStorage.getItem("veganShopping") || "[]");
     let learnedProducts = JSON.parse(localStorage.getItem("veganLearnedProducts") || "[]");
-    let html5QrCode = null;
+    let barcodeReader = null;
+    let scannerControls = null;
     let scannerRunning = false;
     let scanLocked = false;
 
@@ -363,21 +370,9 @@
         (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     }
 
-    function scannerConfig() {
-      return {
-        fps: 12,
-        qrbox: (width, height) => ({
-          width: Math.max(220, Math.min(width - 24, Math.floor(width * 0.9))),
-          height: Math.max(110, Math.min(height - 24, 150))
-        }),
-        aspectRatio: 1.777778,
-        disableFlip: true
-      };
-    }
-
-    async function handleDecodedBarcode(decodedText, status) {
+    async function handleDecodedBarcode(decodedText, status, controls) {
       if (scanLocked) return;
-      const barcode = String(decodedText || "").trim();
+      const barcode = String(decodedText || "").replace(/\D/g, "").trim();
       if (!/^\d{8,14}$/.test(barcode)) return;
 
       scanLocked = true;
@@ -386,43 +381,40 @@
 
       if (navigator.vibrate) navigator.vibrate(80);
 
-      await stopBarcodeScanner(false);
+      try {
+        if (controls && typeof controls.stop === "function") controls.stop();
+      } catch (_) {}
+
+      scannerControls = null;
+      scannerRunning = false;
+      const panel = document.getElementById("scannerPanel");
+      panel.hidden = true;
+      document.getElementById("startScannerButton").disabled = false;
+
       await checkProduct();
       scanLocked = false;
     }
 
-    async function startWithPreferredCamera(status) {
-      const onSuccess = decodedText => handleDecodedBarcode(decodedText, status);
-      const onFailure = () => {};
-      const config = scannerConfig();
+    async function gentlyOptimizeCamera() {
+      const video = document.getElementById("barcodeVideo");
+      const stream = video && video.srcObject;
+      if (!stream || typeof stream.getVideoTracks !== "function") return;
+
+      const track = stream.getVideoTracks()[0];
+      if (!track || typeof track.getCapabilities !== "function") return;
 
       try {
-        await html5QrCode.start(
-          { facingMode: "environment" },
-          config,
-          onSuccess,
-          onFailure
-        );
-        return;
-      } catch (firstError) {
-        console.warn("Start mit facingMode environment fehlgeschlagen.", firstError);
+        const capabilities = track.getCapabilities();
+        const advanced = [];
+
+        if (capabilities.focusMode && Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous") && !isIOSDevice()) {
+          advanced.push({ focusMode: "continuous" });
+        }
+
+        if (advanced.length) await track.applyConstraints({ advanced });
+      } catch (error) {
+        console.info("Optionale Kameraoptimierung nicht verfügbar.", error);
       }
-
-      const cameras = await Html5Qrcode.getCameras();
-      if (!cameras || !cameras.length) {
-        throw new Error("Keine Kamera gefunden.");
-      }
-
-      const rearCamera = cameras.find(camera =>
-        /back|rear|environment|rück|hinten/i.test(camera.label || "")
-      ) || cameras[cameras.length - 1];
-
-      await html5QrCode.start(
-        rearCamera.id,
-        config,
-        onSuccess,
-        onFailure
-      );
     }
 
     async function startBarcodeScanner() {
@@ -430,14 +422,15 @@
       const status = document.getElementById("scannerStatus");
       const startButton = document.getElementById("startScannerButton");
       const result = document.getElementById("checkResult");
+      const video = document.getElementById("barcodeVideo");
 
-      if (typeof Html5Qrcode === "undefined") {
-        result.innerHTML = '<div class="status unknown">Der Kamera Scanner konnte nicht geladen werden. Prüfe deine Internetverbindung und lade die Seite neu.</div>';
+      if (typeof ZXingBrowser === "undefined") {
+        result.innerHTML = '<div class="status unknown">Der Barcode Scanner konnte nicht geladen werden. Prüfe deine Internetverbindung und lade die Seite neu.</div>';
         return;
       }
 
       if (!window.isSecureContext) {
-        result.innerHTML = '<div class="status unknown">Die Kamera benötigt HTTPS. Öffne die veröffentlichte GitHub Pages Adresse und nicht die lokale Datei.</div>';
+        result.innerHTML = '<div class="status unknown">Die Kamera benötigt HTTPS. Öffne die veröffentlichte GitHub Pages Adresse.</div>';
         return;
       }
 
@@ -446,56 +439,61 @@
         return;
       }
 
+      await stopBarcodeScanner(false);
       panel.hidden = false;
       startButton.disabled = true;
-      status.textContent = isIOSDevice()
-        ? "iPhone Kamera wird gestartet. Bitte Kamerazugriff erlauben."
-        : "Kamera wird gestartet. Bitte Kamerazugriff erlauben.";
+      scanLocked = false;
       result.innerHTML = "";
+      status.textContent = "Rückkamera wird gestartet.";
 
       try {
-        if (html5QrCode) {
-          try { await stopBarcodeScanner(false); } catch (_) {}
-          panel.hidden = false;
-          startButton.disabled = true;
-        }
-
-        html5QrCode = new Html5Qrcode("barcodeReader", {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128
-          ],
-          verbose: false
+        barcodeReader = new ZXingBrowser.BrowserMultiFormatOneDReader(undefined, {
+          delayBetweenScanAttempts: 80,
+          delayBetweenScanSuccess: 250
         });
 
-        scanLocked = false;
-        await startWithPreferredCamera(status);
-        scannerRunning = true;
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+          }
+        };
 
-        const video = document.querySelector("#barcodeReader video");
-        if (video) {
-          video.setAttribute("playsinline", "true");
-          video.setAttribute("webkit-playsinline", "true");
-          video.muted = true;
-        }
+        scannerControls = await barcodeReader.decodeFromConstraints(
+          constraints,
+          video,
+          (scanResult, scanError, controls) => {
+            if (scanResult) {
+              handleDecodedBarcode(scanResult.getText(), status, controls);
+            }
+          }
+        );
+
+        scannerRunning = true;
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("webkit-playsinline", "true");
+        video.muted = true;
+        await video.play().catch(() => {});
+        await gentlyOptimizeCamera();
 
         status.textContent = isIOSDevice()
-          ? "Rückkamera aktiv. Halte den Barcode etwa 15 bis 25 cm vor die Kamera und bewege das iPhone leicht vor oder zurück, bis er scharf ist."
-          : "Rückkamera aktiv. Halte den Barcode ruhig in den Scanbereich.";
+          ? "Scanner aktiv. Halte den gesamten Barcode waagerecht in den Rahmen. Abstand etwa 10 bis 20 cm."
+          : "Scanner aktiv. Halte den gesamten Barcode waagerecht in den Rahmen.";
       } catch (error) {
-        console.error("Kamera konnte nicht gestartet werden:", error);
+        console.error("Scanner konnte nicht gestartet werden:", error);
         scannerRunning = false;
+        scannerControls = null;
+        barcodeReader = null;
         startButton.disabled = false;
         panel.hidden = true;
-        html5QrCode = null;
 
         const details = escapeHtml(error && (error.name || error.message || String(error)));
         result.innerHTML = `
-          <div class="status unknown">Kamera konnte nicht gestartet werden.</div>
-          <p class="muted">Auf dem iPhone: Einstellungen → Safari → Kamera → Erlauben. Öffne die App anschließend neu über deine HTTPS GitHub Pages Adresse.</p>
+          <div class="status unknown">Scanner konnte nicht gestartet werden.</div>
+          <p class="muted">Prüfe in den iPhone Einstellungen, ob Safari auf die Kamera zugreifen darf.</p>
           ${details ? `<p class="muted small">Technischer Hinweis: ${details}</p>` : ""}
         `;
       }
@@ -505,19 +503,30 @@
       const panel = document.getElementById("scannerPanel");
       const status = document.getElementById("scannerStatus");
       const startButton = document.getElementById("startScannerButton");
+      const video = document.getElementById("barcodeVideo");
 
       try {
-        if (html5QrCode && scannerRunning) await html5QrCode.stop();
-        if (html5QrCode) html5QrCode.clear();
-        html5QrCode = null;
+        if (scannerControls && typeof scannerControls.stop === "function") scannerControls.stop();
       } catch (error) {
-        console.warn("Scanner konnte nicht sauber beendet werden.", error);
-      } finally {
-        scannerRunning = false;
-        panel.hidden = true;
-        startButton.disabled = false;
-        if (clearStatus) status.textContent = "";
+        console.warn("Scanner Controls konnten nicht beendet werden.", error);
       }
+
+      try {
+        const stream = video && video.srcObject;
+        if (stream && typeof stream.getTracks === "function") {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        if (video) video.srcObject = null;
+      } catch (error) {
+        console.warn("Kamerastream konnte nicht sauber beendet werden.", error);
+      }
+
+      scannerControls = null;
+      barcodeReader = null;
+      scannerRunning = false;
+      panel.hidden = true;
+      startButton.disabled = false;
+      if (clearStatus) status.textContent = "";
     }
 
     async function checkProduct() {
