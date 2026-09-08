@@ -358,105 +358,146 @@
       renderProduct(product, { status: "vegan", reason: "Du hast dieses Produkt lokal als vegan bestätigt." }, product.source);
     }
 
-    async function enableContinuousAutofocus() {
-      if (!html5QrCode || !scannerRunning) return false;
+    function isIOSDevice() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    }
+
+    function scannerConfig() {
+      return {
+        fps: 12,
+        qrbox: (width, height) => ({
+          width: Math.max(220, Math.min(width - 24, Math.floor(width * 0.9))),
+          height: Math.max(110, Math.min(height - 24, 150))
+        }),
+        aspectRatio: 1.777778,
+        disableFlip: true
+      };
+    }
+
+    async function handleDecodedBarcode(decodedText, status) {
+      if (scanLocked) return;
+      const barcode = String(decodedText || "").trim();
+      if (!/^\d{8,14}$/.test(barcode)) return;
+
+      scanLocked = true;
+      document.getElementById("productInput").value = barcode;
+      status.textContent = `Barcode erkannt: ${barcode}. Produkt wird gesucht.`;
+
+      if (navigator.vibrate) navigator.vibrate(80);
+
+      await stopBarcodeScanner(false);
+      await checkProduct();
+      scanLocked = false;
+    }
+
+    async function startWithPreferredCamera(status) {
+      const onSuccess = decodedText => handleDecodedBarcode(decodedText, status);
+      const onFailure = () => {};
+      const config = scannerConfig();
 
       try {
-        const capabilities = typeof html5QrCode.getRunningTrackCapabilities === "function"
-          ? html5QrCode.getRunningTrackCapabilities()
-          : null;
-
-        const focusModes = capabilities && capabilities.focusMode;
-        const supportsContinuous = Array.isArray(focusModes)
-          ? focusModes.includes("continuous")
-          : true;
-
-        if (!supportsContinuous || typeof html5QrCode.applyVideoConstraints !== "function") {
-          return false;
-        }
-
-        try {
-          await html5QrCode.applyVideoConstraints({
-            advanced: [{ focusMode: "continuous" }]
-          });
-        } catch (firstError) {
-          await html5QrCode.applyVideoConstraints({ focusMode: "continuous" });
-        }
-
-        return true;
-      } catch (error) {
-        console.info("Kontinuierlicher Autofokus wird von diesem Gerät oder Browser nicht unterstützt.", error);
-        return false;
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          onSuccess,
+          onFailure
+        );
+        return;
+      } catch (firstError) {
+        console.warn("Start mit facingMode environment fehlgeschlagen.", firstError);
       }
+
+      const cameras = await Html5Qrcode.getCameras();
+      if (!cameras || !cameras.length) {
+        throw new Error("Keine Kamera gefunden.");
+      }
+
+      const rearCamera = cameras.find(camera =>
+        /back|rear|environment|rück|hinten/i.test(camera.label || "")
+      ) || cameras[cameras.length - 1];
+
+      await html5QrCode.start(
+        rearCamera.id,
+        config,
+        onSuccess,
+        onFailure
+      );
     }
 
     async function startBarcodeScanner() {
       const panel = document.getElementById("scannerPanel");
       const status = document.getElementById("scannerStatus");
       const startButton = document.getElementById("startScannerButton");
+      const result = document.getElementById("checkResult");
 
       if (typeof Html5Qrcode === "undefined") {
-        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Der Kamera Scanner konnte nicht geladen werden. Prüfe deine Internetverbindung.</div>';
+        result.innerHTML = '<div class="status unknown">Der Kamera Scanner konnte nicht geladen werden. Prüfe deine Internetverbindung und lade die Seite neu.</div>';
+        return;
+      }
+
+      if (!window.isSecureContext) {
+        result.innerHTML = '<div class="status unknown">Die Kamera benötigt HTTPS. Öffne die veröffentlichte GitHub Pages Adresse und nicht die lokale Datei.</div>';
         return;
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Dieser Browser unterstützt keinen Kamerazugriff. Nutze einen aktuellen Browser auf dem Smartphone.</div>';
+        result.innerHTML = '<div class="status unknown">Dieser Browser unterstützt keinen Kamerazugriff.</div>';
         return;
       }
 
       panel.hidden = false;
       startButton.disabled = true;
-      status.textContent = "Kamera wird gestartet. Bitte Kamerazugriff erlauben.";
-      document.getElementById("checkResult").innerHTML = "";
+      status.textContent = isIOSDevice()
+        ? "iPhone Kamera wird gestartet. Bitte Kamerazugriff erlauben."
+        : "Kamera wird gestartet. Bitte Kamerazugriff erlauben.";
+      result.innerHTML = "";
 
       try {
-        if (!html5QrCode) {
-          html5QrCode = new Html5Qrcode("barcodeReader", {
-            formatsToSupport: [
-              Html5QrcodeSupportedFormats.EAN_13,
-              Html5QrcodeSupportedFormats.EAN_8,
-              Html5QrcodeSupportedFormats.UPC_A,
-              Html5QrcodeSupportedFormats.UPC_E,
-              Html5QrcodeSupportedFormats.CODE_128
-            ],
-            verbose: false
-          });
+        if (html5QrCode) {
+          try { await stopBarcodeScanner(false); } catch (_) {}
+          panel.hidden = false;
+          startButton.disabled = true;
         }
 
-        scanLocked = false;
-        await html5QrCode.start(
-          { facingMode: "environment" },
-          {
-            fps: 10,
-            qrbox: (width, height) => ({
-              width: Math.max(160, Math.min(width - 20, Math.floor(width * 0.82))),
-              height: Math.max(90, Math.min(height - 20, 140))
-            })
-          },
-          async decodedText => {
-            if (scanLocked) return;
-            scanLocked = true;
-            const barcode = String(decodedText || "").trim();
-            document.getElementById("productInput").value = barcode;
-            status.textContent = `Barcode erkannt: ${barcode}`;
-            await stopBarcodeScanner(false);
-            await checkProduct();
-            scanLocked = false;
-          },
-          () => {}
-        );
+        html5QrCode = new Html5Qrcode("barcodeReader", {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128
+          ],
+          verbose: false
+        });
 
+        scanLocked = false;
+        await startWithPreferredCamera(status);
         scannerRunning = true;
-        const autofocusActive = await enableContinuousAutofocus();
-        status.textContent = autofocusActive
-          ? "Autofokus aktiv. Halte den Barcode in den Scanbereich."
-          : "Halte den Barcode ruhig und gut beleuchtet vor die Kamera.";
+
+        const video = document.querySelector("#barcodeReader video");
+        if (video) {
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.muted = true;
+        }
+
+        status.textContent = isIOSDevice()
+          ? "Rückkamera aktiv. Halte den Barcode etwa 15 bis 25 cm vor die Kamera und bewege das iPhone leicht vor oder zurück, bis er scharf ist."
+          : "Rückkamera aktiv. Halte den Barcode ruhig in den Scanbereich.";
       } catch (error) {
+        console.error("Kamera konnte nicht gestartet werden:", error);
         scannerRunning = false;
         startButton.disabled = false;
         panel.hidden = true;
-        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Kamera konnte nicht gestartet werden. Erlaube den Kamerazugriff und öffne die App über HTTPS, zum Beispiel über GitHub Pages.</div>';
+        html5QrCode = null;
+
+        const details = escapeHtml(error && (error.name || error.message || String(error)));
+        result.innerHTML = `
+          <div class="status unknown">Kamera konnte nicht gestartet werden.</div>
+          <p class="muted">Auf dem iPhone: Einstellungen → Safari → Kamera → Erlauben. Öffne die App anschließend neu über deine HTTPS GitHub Pages Adresse.</p>
+          ${details ? `<p class="muted small">Technischer Hinweis: ${details}</p>` : ""}
+        `;
       }
     }
 
