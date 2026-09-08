@@ -358,6 +358,38 @@
       renderProduct(product, { status: "vegan", reason: "Du hast dieses Produkt lokal als vegan bestätigt." }, product.source);
     }
 
+    async function enableContinuousAutofocus() {
+      if (!html5QrCode || !scannerRunning) return false;
+
+      try {
+        const capabilities = typeof html5QrCode.getRunningTrackCapabilities === "function"
+          ? html5QrCode.getRunningTrackCapabilities()
+          : null;
+
+        const focusModes = capabilities && capabilities.focusMode;
+        const supportsContinuous = Array.isArray(focusModes)
+          ? focusModes.includes("continuous")
+          : true;
+
+        if (!supportsContinuous || typeof html5QrCode.applyVideoConstraints !== "function") {
+          return false;
+        }
+
+        try {
+          await html5QrCode.applyVideoConstraints({
+            advanced: [{ focusMode: "continuous" }]
+          });
+        } catch (firstError) {
+          await html5QrCode.applyVideoConstraints({ focusMode: "continuous" });
+        }
+
+        return true;
+      } catch (error) {
+        console.info("Kontinuierlicher Autofokus wird von diesem Gerät oder Browser nicht unterstützt.", error);
+        return false;
+      }
+    }
+
     async function startBarcodeScanner() {
       const panel = document.getElementById("scannerPanel");
       const status = document.getElementById("scannerStatus");
@@ -416,7 +448,10 @@
         );
 
         scannerRunning = true;
-        status.textContent = "Halte den Barcode ruhig und gut beleuchtet vor die Kamera.";
+        const autofocusActive = await enableContinuousAutofocus();
+        status.textContent = autofocusActive
+          ? "Autofokus aktiv. Halte den Barcode in den Scanbereich."
+          : "Halte den Barcode ruhig und gut beleuchtet vor die Kamera.";
       } catch (error) {
         scannerRunning = false;
         startButton.disabled = false;
