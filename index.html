@@ -101,6 +101,15 @@
     .scan-frame { position: absolute; left: 9%; right: 9%; top: 26%; height: 48%; border: 3px solid rgba(255,255,255,.92); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.18); pointer-events: none; }
     .scan-line { position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: rgba(255,255,255,.95); pointer-events: none; }
     .scanner-status { margin: 8px 0 0; text-align: center; }
+    .photo-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fbfcfa; }
+    .photo-panel[hidden] { display: none; }
+    .photo-preview { width: 100%; max-height: 280px; object-fit: contain; display: block; border-radius: 12px; background: #eef1ed; border: 1px solid var(--border); }
+    .photo-suggestions { display: grid; gap: 10px; margin-top: 10px; }
+    .photo-suggestion { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff; }
+    .photo-suggestion h4 { margin: 0 0 4px; }
+    .confidence { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    .guess-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
+    .guess-chip { width: auto; padding: 8px 10px; font-size: 0.86rem; background: #e9f1ea; color: var(--text); }
     nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
     nav button { background: #fff; color: var(--muted); border-radius: 0; padding: 12px 6px 10px; font-size: 0.78rem; font-weight: 700; }
     nav button.active { color: var(--primary); background: #f2f7f3; }
@@ -135,6 +144,13 @@
           <button id="stopScannerButton" class="danger" type="button">Scanner schließen</button>
         </div>
         <div id="checkResult"></div>
+        <input id="productPhotoInput" type="file" accept="image/*" capture="environment" hidden />
+        <div id="photoPanel" class="photo-panel" hidden>
+          <img id="photoPreview" class="photo-preview" alt="Produktfoto" />
+          <div id="photoStatus" class="status info">Foto wird vorbereitet.</div>
+          <div id="photoSuggestions" class="photo-suggestions"></div>
+          <button id="closePhotoButton" class="secondary" type="button" style="margin-top:10px">Fotoanalyse schließen</button>
+        </div>
       </div>
 
       <div class="card hint">
@@ -188,6 +204,7 @@
   </nav>
 
   <script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const localProducts = [
       { name: "Haferdrink", barcode: "100001", vegan: true, source: "Lokale Beispieldaten" },
@@ -214,6 +231,8 @@
     let scannerControls = null;
     let scannerRunning = false;
     let scanLocked = false;
+    let currentPhotoUrl = null;
+    let photoWorker = null;
 
     const normalize = value => String(value || "").trim().toLowerCase();
     const isBarcode = value => /^\d{8,14}$/.test(String(value || "").trim());
@@ -472,13 +491,341 @@
       const result = document.getElementById("checkResult");
       result.innerHTML = `
         <div class="status unknown">Kein eindeutiger automatischer Treffer gefunden.</div>
-        <p class="muted">Prüfe den Barcode zusätzlich bei FDDB. Wenn du das Produkt dort findest und sicher vegan ist, kannst du es anschließend lokal speichern.</p>
+        <p class="muted">Du kannst jetzt die Vorderseite des Produkts fotografieren. Die App versucht zuerst einen Barcode im Foto zu lesen und erkennt danach Produktname und Marke anhand des Verpackungstextes.</p>
         <div class="actions">
+          <button id="openPhotoRecognition">📷 Produkt fotografieren oder Bild auswählen</button>
           <a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(query)}">Bei FDDB suchen</a>
-          <button id="confirmLocalVegan">Ich habe geprüft: Produkt ist vegan</button>
+          <button id="confirmLocalVegan" class="secondary">Ich habe geprüft: Produkt ist vegan</button>
         </div>
       `;
+      document.getElementById("openPhotoRecognition").addEventListener("click", openPhotoRecognition);
       document.getElementById("confirmLocalVegan").addEventListener("click", () => saveConfirmedProduct(query));
+    }
+
+    function openPhotoRecognition() {
+      const input = document.getElementById("productPhotoInput");
+      input.value = "";
+      input.click();
+    }
+
+    function closePhotoRecognition() {
+      const panel = document.getElementById("photoPanel");
+      panel.hidden = true;
+      document.getElementById("photoSuggestions").innerHTML = "";
+      if (currentPhotoUrl) {
+        URL.revokeObjectURL(currentPhotoUrl);
+        currentPhotoUrl = null;
+      }
+    }
+
+    function photoProgressText(message) {
+      if (!message) return "Produktfoto wird analysiert.";
+      if (message.status === "recognizing text") {
+        const pct = Math.round((message.progress || 0) * 100);
+        return `Verpackungstext wird erkannt: ${pct}%`;
+      }
+      if (message.status === "loading language traineddata") return "Sprachdaten für die Texterkennung werden geladen.";
+      if (message.status === "initializing api") return "Texterkennung wird gestartet.";
+      return "Produktfoto wird analysiert.";
+    }
+
+    async function tryBarcodeFromPhoto(url) {
+      if (typeof ZXingBrowser === "undefined") return null;
+      try {
+        const reader = new ZXingBrowser.BrowserMultiFormatOneDReader();
+        const scanResult = await reader.decodeFromImageUrl(url);
+        const barcode = String(scanResult && scanResult.getText ? scanResult.getText() : "").replace(/\D/g, "");
+        return /^\d{8,14}$/.test(barcode) ? barcode : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    const photoStopWords = new Set([
+      "zutaten", "ingredients", "naehrwerte", "nahrwerte", "nutrition", "energie", "energy", "fett", "fat",
+      "kohlenhydrate", "carbohydrate", "zucker", "sugar", "eiweiss", "protein", "salz", "salt", "portion",
+      "mindestens", "haltbar", "hergestellt", "kuehl", "lagern", "www", "com", "de", "gmbh", "gramm", "ml"
+    ]);
+
+    function tokenizePhotoText(text) {
+      return normalize(text)
+        .replace(/[^a-z0-9äöüß]+/g, " ")
+        .split(/\s+/)
+        .filter(token => token.length >= 3 && !photoStopWords.has(token) && !/^\d+$/.test(token));
+    }
+
+    function buildPhotoNameGuesses(text) {
+      const lines = String(text || "")
+        .split(/\n+/)
+        .map(line => line.replace(/\s+/g, " ").trim())
+        .filter(line => line.length >= 3 && line.length <= 55)
+        .filter(line => !/^\d+[\d\s.,%/-]*$/.test(line))
+        .filter(line => !/(zutaten|ingredients|nährwert|naehrwert|nutrition|energie|energy|www\.|mindestens haltbar|hergestellt)/i.test(line));
+
+      const guesses = [];
+      for (const line of lines) {
+        const letters = (line.match(/[A-Za-zÄÖÜäöüß]/g) || []).length;
+        if (letters < 3) continue;
+        const cleaned = line.replace(/^[^A-Za-zÄÖÜäöüß]+|[^A-Za-zÄÖÜäöüß0-9%&+.' -]+$/g, "").trim();
+        if (!cleaned) continue;
+        if (!guesses.some(item => normalize(item) === normalize(cleaned))) guesses.push(cleaned);
+        if (guesses.length >= 6) break;
+      }
+      return guesses;
+    }
+
+    function inferProductTypes(text) {
+      const value = normalize(text);
+      const rules = [
+        [/(protein.*riegel|protein bar|eiweiss.*riegel)/, "Proteinriegel"],
+        [/(muesli|müsli|cereal).*riegel|granola bar/, "Müsliriegel"],
+        [/(riegel|bar)/, "Riegel"],
+        [/(schokolade|chocolate|choco)/, "Schokolade"],
+        [/(hafer.*drink|oat.*drink|hafermilch)/, "Haferdrink"],
+        [/(soja.*drink|soy.*drink|sojamilch)/, "Sojadrink"],
+        [/(mandel.*drink|almond.*drink)/, "Mandeldrink"],
+        [/(joghurt|yogurt|yoghurt)/, "Joghurt oder Joghurtalternative"],
+        [/(nudeln|pasta|spaghetti|penne|fusilli)/, "Nudeln oder Pasta"],
+        [/(chips|crisps)/, "Chips oder Snack"],
+        [/(keks|cookies|biscuit)/, "Kekse oder Gebäck"],
+        [/(brot|bread|toast)/, "Brot oder Backware"],
+        [/(saft|juice)/, "Saft"],
+        [/(aufstrich|spread)/, "Aufstrich"]
+      ];
+      return rules.filter(([pattern]) => pattern.test(value)).map(([, label]) => label).slice(0, 3);
+    }
+
+    async function fetchOpenFoodFactsSuggestions(query, pageSize = 6) {
+      const fields = "code,product_name,product_name_de,brands,image_front_small_url,ingredients_text,ingredients_text_de,ingredients_analysis_tags,labels_tags,allergens_tags,traces_tags";
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${pageSize}&fields=${encodeURIComponent(fields)}`;
+      const response = await fetch(url);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return Array.isArray(data.products) ? data.products : [];
+    }
+
+    function scorePhotoProduct(product, ocrTokens) {
+      const haystack = tokenizePhotoText(`${product.product_name_de || product.product_name || ""} ${product.brands || ""}`);
+      if (!haystack.length) return 0;
+      const uniqueOcr = new Set(ocrTokens);
+      let score = 0;
+      haystack.forEach(token => {
+        if (uniqueOcr.has(token)) score += token.length >= 6 ? 3 : 2;
+        else if ([...uniqueOcr].some(item => item.length >= 5 && (item.includes(token) || token.includes(item)))) score += 1;
+      });
+      return score;
+    }
+
+    async function findProductsFromPhotoText(text, guesses) {
+      const searches = [];
+      const compactGuesses = guesses.slice(0, 3);
+      compactGuesses.forEach(guess => searches.push(guess));
+      const tokens = tokenizePhotoText(text).slice(0, 8);
+      if (tokens.length >= 2) searches.push(tokens.slice(0, 4).join(" "));
+
+      const products = [];
+      const seen = new Set();
+      for (const query of searches.slice(0, 4)) {
+        try {
+          const found = await fetchOpenFoodFactsSuggestions(query, 6);
+          found.forEach(product => {
+            const key = String(product.code || `${product.product_name}-${product.brands}`);
+            if (!seen.has(key)) {
+              seen.add(key);
+              products.push(product);
+            }
+          });
+        } catch (error) {
+          console.info("Fotosuche bei Open Food Facts fehlgeschlagen", error);
+        }
+      }
+      const ocrTokens = tokenizePhotoText(text);
+      return products
+        .map(product => ({ product, score: scorePhotoProduct(product, ocrTokens) }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
+    }
+
+    function usePhotoProduct(product) {
+      const classification = classifyOffProduct(product);
+      document.getElementById("productInput").value = product.code || product.product_name_de || product.product_name || "";
+      closePhotoRecognition();
+      renderProduct(product, classification, "Fotoerkennung + Open Food Facts");
+      if (classification.status === "unknown") {
+        const result = document.getElementById("checkResult");
+        const name = product.product_name_de || product.product_name || "Unbekanntes Produkt";
+        const actions = result.querySelector(".actions");
+        if (actions) {
+          const confirm = document.createElement("button");
+          confirm.className = "secondary";
+          confirm.textContent = "Veganität selbst geprüft und zum Vorrat hinzufügen";
+          confirm.addEventListener("click", () => addConfirmedPhotoProductToPantry(name, product.code || ""));
+          actions.prepend(confirm);
+        }
+      }
+    }
+
+    function addConfirmedPhotoProductToPantry(name, barcode = "") {
+      const safeName = String(name || "").trim();
+      if (!safeName) return;
+      const product = { name: safeName, barcode: barcode || "", vegan: true, source: "Vom Nutzer nach Fotoanalyse als vegan bestätigt" };
+      learnedProducts = learnedProducts.filter(item => !(barcode && item.barcode === barcode) && normalize(item.name) !== normalize(safeName));
+      learnedProducts.unshift(product);
+      addToPantry(safeName);
+      saveData();
+      document.getElementById("checkResult").innerHTML = `<div class="status vegan">✓ ${escapeHtml(safeName)} wurde als vegan bestätigt und zum Vorrat hinzugefügt.</div>`;
+    }
+
+    function renderPhotoFallback(guesses, types, ocrText, ingredientClassification) {
+      const container = document.getElementById("photoSuggestions");
+      const suggestedName = guesses[0] || types[0] || "";
+      container.innerHTML = `
+        <div class="photo-suggestion">
+          <h4>Meine Erkennung ist nicht eindeutig</h4>
+          ${types.length ? `<p class="muted">Produktart wahrscheinlich: <strong>${types.map(escapeHtml).join(" / ")}</strong></p>` : ""}
+          ${guesses.length ? `<p class="muted">Erkannter Verpackungstext. Tippe auf den passendsten Vorschlag:</p><div class="guess-list">${guesses.map((guess, index) => `<button class="guess-chip" type="button" data-photo-guess="${index}">${escapeHtml(guess)}</button>`).join("")}</div>` : `<p class="muted">Auf dem Foto konnte kein eindeutiger Produktname gelesen werden. Du kannst ihn unten selbst ergänzen.</p>`}
+          ${ingredientClassification.status === "nonvegan" ? `<div class="status nonvegan">${escapeHtml(ingredientClassification.reason)}</div>` : ingredientClassification.evidence && ingredientClassification.evidence.uncertain.length ? `<div class="status unknown">${escapeHtml(ingredientClassification.reason)}</div>` : ""}
+          <label for="photoManualName" style="margin-top:10px">Produktname</label>
+          <input id="photoManualName" value="${escapeHtml(suggestedName)}" placeholder="z. B. Proteinriegel Schoko" />
+          ${ingredientClassification.status === "nonvegan" ? `<p class="muted"><strong>Hinweis:</strong> Die Texterkennung kann auch Spurenhinweise oder andere Verpackungstexte erfassen. Prüfe deshalb die Zutatenliste selbst, bevor du das Produkt bestätigst.</p>` : ""}
+          <button id="confirmPhotoManualVegan" type="button">Zutaten geprüft: vegan und zum Vorrat hinzufügen</button>
+          <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Erkannten Text anzeigen</summary><pre style="white-space:pre-wrap;font:inherit;font-size:.78rem;color:var(--muted)">${escapeHtml(String(ocrText || "").slice(0, 2500))}</pre></details>
+        </div>`;
+
+      container.querySelectorAll("[data-photo-guess]").forEach(button => {
+        button.addEventListener("click", () => {
+          const input = document.getElementById("photoManualName");
+          input.value = guesses[Number(button.dataset.photoGuess)] || "";
+        });
+      });
+      const confirm = document.getElementById("confirmPhotoManualVegan");
+      if (confirm) confirm.addEventListener("click", () => {
+        const name = document.getElementById("photoManualName").value.trim();
+        if (!name) return;
+        closePhotoRecognition();
+        addConfirmedPhotoProductToPantry(name);
+      });
+    }
+
+    function renderPhotoMatches(matches, guesses, types, ocrText) {
+      const container = document.getElementById("photoSuggestions");
+      const cards = matches.map(({ product, score }, index) => {
+        const classification = classifyOffProduct(product);
+        const name = product.product_name_de || product.product_name || "Unbekanntes Produkt";
+        const brand = product.brands || "";
+        const statusText = classification.status === "vegan" ? "Vegan" : classification.status === "nonvegan" ? "Nicht vegan" : "Veganität unklar";
+        return `<div class="photo-suggestion">
+          <h4>${escapeHtml(name)}</h4>
+          ${brand ? `<div class="muted">${escapeHtml(brand)}</div>` : ""}
+          <div class="confidence">Trefferwert ${score} · ${statusText}</div>
+          <button type="button" data-photo-product="${index}" style="margin-top:8px">Dieses Produkt ist gemeint</button>
+        </div>`;
+      }).join("");
+
+      container.innerHTML = `
+        <div class="status info">Ich habe ${matches.length} mögliche Produkt${matches.length === 1 ? "" : "e"} gefunden. Wähle den passenden Treffer.</div>
+        ${types.length ? `<p class="muted">Erkannte Produktart: <strong>${types.map(escapeHtml).join(" / ")}</strong></p>` : ""}
+        ${cards}
+        <div class="photo-suggestion">
+          <h4>Nichts davon?</h4>
+          <p class="muted">Dann kannst du einen erkannten Namen übernehmen oder selbst korrigieren.</p>
+          <div class="guess-list">${guesses.map((guess, index) => `<button class="guess-chip" type="button" data-photo-guess="${index}">${escapeHtml(guess)}</button>`).join("")}</div>
+          <label for="photoManualName">Produktname</label>
+          <input id="photoManualName" value="${escapeHtml(guesses[0] || types[0] || "")}" placeholder="Produktname eingeben" />
+          <button id="confirmPhotoManualVegan" type="button">Veganität geprüft und zum Vorrat hinzufügen</button>
+        </div>`;
+
+      container.querySelectorAll("[data-photo-product]").forEach(button => {
+        button.addEventListener("click", () => usePhotoProduct(matches[Number(button.dataset.photoProduct)].product));
+      });
+      container.querySelectorAll("[data-photo-guess]").forEach(button => {
+        button.addEventListener("click", () => {
+          document.getElementById("photoManualName").value = guesses[Number(button.dataset.photoGuess)] || "";
+        });
+      });
+      document.getElementById("confirmPhotoManualVegan").addEventListener("click", () => {
+        const name = document.getElementById("photoManualName").value.trim();
+        if (!name) return;
+        closePhotoRecognition();
+        addConfirmedPhotoProductToPantry(name);
+      });
+    }
+
+    async function analyzeProductPhoto(file) {
+      if (!file) return;
+      const panel = document.getElementById("photoPanel");
+      const preview = document.getElementById("photoPreview");
+      const status = document.getElementById("photoStatus");
+      const suggestions = document.getElementById("photoSuggestions");
+
+      closePhotoRecognition();
+      currentPhotoUrl = URL.createObjectURL(file);
+      preview.src = currentPhotoUrl;
+      panel.hidden = false;
+      suggestions.innerHTML = "";
+      status.className = "status info";
+      status.textContent = "Foto wird analysiert. Zuerst wird nach einem Barcode gesucht.";
+
+      const barcode = await tryBarcodeFromPhoto(currentPhotoUrl);
+      if (barcode) {
+        document.getElementById("productInput").value = barcode;
+        status.textContent = `Barcode ${barcode} im Foto erkannt. Produkt wird gesucht.`;
+        try {
+          const product = await fetchOpenFoodFactsByBarcode(barcode);
+          if (product) {
+            closePhotoRecognition();
+            renderProduct(product, classifyOffProduct(product), "Barcode aus Produktfoto + Open Food Facts");
+            return;
+          }
+        } catch (_) {}
+      }
+
+      if (typeof Tesseract === "undefined") {
+        status.className = "status unknown";
+        status.textContent = "Die Texterkennung konnte nicht geladen werden. Bitte Produktname manuell ergänzen.";
+        renderPhotoFallback([], [], "", { status: "unknown", reason: "Keine Texterkennung verfügbar.", evidence: { nonVegan: [], uncertain: [] } });
+        return;
+      }
+
+      try {
+        status.textContent = "Verpackungstext wird gelesen. Beim ersten Mal können zusätzliche Sprachdaten geladen werden.";
+        if (photoWorker) {
+          try { await photoWorker.terminate(); } catch (_) {}
+          photoWorker = null;
+        }
+        photoWorker = await Tesseract.createWorker("deu+eng", 1, {
+          logger: message => { status.textContent = photoProgressText(message); }
+        });
+        const recognition = await photoWorker.recognize(file, { rotateAuto: true });
+        const text = recognition && recognition.data ? recognition.data.text || "" : "";
+        await photoWorker.terminate();
+        photoWorker = null;
+
+        const guesses = buildPhotoNameGuesses(text);
+        const types = inferProductTypes(text);
+        const ingredientClassification = classifyByIngredients(text, "Foto Texterkennung");
+        status.textContent = guesses.length ? "Text erkannt. Passende Produkte werden gesucht." : "Text erkannt, aber kein eindeutiger Produktname gefunden.";
+
+        const matches = guesses.length ? await findProductsFromPhotoText(text, guesses) : [];
+        if (matches.length) {
+          status.textContent = "Mögliche Produkte gefunden.";
+          renderPhotoMatches(matches, guesses, types, text);
+        } else {
+          status.className = "status unknown";
+          status.textContent = "Kein eindeutiger Datenbanktreffer. Ich zeige dir meine Erkennung als Vorschlag.";
+          renderPhotoFallback(guesses, types, text, ingredientClassification);
+        }
+      } catch (error) {
+        console.error("Fotoanalyse fehlgeschlagen", error);
+        if (photoWorker) {
+          try { await photoWorker.terminate(); } catch (_) {}
+          photoWorker = null;
+        }
+        status.className = "status unknown";
+        status.textContent = "Das Foto konnte nicht sicher ausgewertet werden. Du kannst den Produktnamen trotzdem manuell ergänzen.";
+        renderPhotoFallback([], [], "", { status: "unknown", reason: "Fotoerkennung fehlgeschlagen.", evidence: { nonVegan: [], uncertain: [] } });
+      }
     }
 
     function saveConfirmedProduct(query) {
@@ -827,6 +1174,8 @@
     document.getElementById("checkButton").addEventListener("click", checkProduct);
     document.getElementById("startScannerButton").addEventListener("click", startBarcodeScanner);
     document.getElementById("stopScannerButton").addEventListener("click", () => stopBarcodeScanner());
+    document.getElementById("productPhotoInput").addEventListener("change", event => analyzeProductPhoto(event.target.files && event.target.files[0]));
+    document.getElementById("closePhotoButton").addEventListener("click", closePhotoRecognition);
     document.getElementById("productInput").addEventListener("keydown", event => { if (event.key === "Enter") checkProduct(); });
     document.getElementById("addPantryButton").addEventListener("click", () => {
       const input = document.getElementById("pantryInput");
