@@ -129,7 +129,8 @@
         <h2>Produkt prüfen</h2>
         <p class="muted">Am zuverlässigsten funktioniert die Suche mit EAN oder Barcode.</p>
         <label for="productInput">Produktname oder Barcode</label>
-        <input id="productInput" inputmode="search" autocomplete="off" placeholder="z. B. 3017624010701" />
+        <input id="productInput" inputmode="search" autocomplete="off" placeholder="z. B. Apfel, Reis, Knoblauch oder Barcode" />
+        <div id="basicFoodSuggestions" class="guess-list" aria-live="polite"></div>
         <div class="row">
           <button id="checkButton">Produkt suchen</button>
           <button id="startScannerButton" class="secondary" type="button">📷 Barcode scannen</button>
@@ -155,7 +156,8 @@
 
       <div class="card hint">
         <strong>Datenquellen</strong>
-        <p class="muted">Suche in mehreren Ebenen: Open Food Facts, optional FoodRepo und lokale bestaetigte Produkte. Die Veganitaet wird zusaetzlich anhand der Zutaten geprueft.</p>
+        <p class="muted">Suche in mehreren Ebenen: lokale vegane Grundzutaten, Open Food Facts, optional FoodRepo und lokal bestätigte Produkte. Die Veganität wird zusätzlich anhand der Zutaten geprüft.</p>
+        <p id="basicFoodCount" class="muted small"></p>
         <details style="margin-top:10px">
           <summary style="cursor:pointer;font-weight:700">FoodRepo optional aktivieren</summary>
           <p class="muted small">FoodRepo benoetigt einen eigenen API Schluessel. Der Schluessel wird nur fuer die aktuelle Sitzung verwendet und nicht in dieser Datei gespeichert.</p>
@@ -173,7 +175,7 @@
           <input id="pantryInput" placeholder="z. B. Paprika" />
           <button id="addPantryButton">Hinzufügen</button>
         </div>
-        <p class="muted">Füge hier nur Zutaten hinzu, deren Veganität du selbst geprüft hast.</p>
+        <p class="muted">Vegane Grundzutaten werden direkt erkannt. Produkte mit unklarer Veganität können ebenfalls gespeichert werden und sind im Vorrat mit ⚠ markiert.</p>
       </div>
       <div class="card"><div id="pantryList" class="list"></div></div>
     </section>
@@ -217,6 +219,125 @@
       { name: "Honig", barcode: "200003", vegan: false, source: "Lokale Beispieldaten" }
     ];
 
+
+    // Lokale vegane Grundzutatenbibliothek. Aus kuratierten Basiszutaten und sinnvollen
+    // Zubereitungsformen werden mehr als 2.000 direkt durchsuchbare Einträge erzeugt.
+    const basicFoodGroups = [
+      {
+        category: "Obst",
+        variants: ["frisch", "getrocknet", "tiefgekühlt"],
+        items: [
+          "Apfel","Birne","Banane","Orange","Mandarine","Clementine","Zitrone","Limette","Grapefruit","Pomelo","Blutorange","Kumquat","Yuzu","Bergamotte",
+          "Erdbeere","Himbeere","Brombeere","Heidelbeere","Blaubeere","Rote Johannisbeere","Schwarze Johannisbeere","Weiße Johannisbeere","Stachelbeere","Cranberry","Preiselbeere","Aroniabeere","Holunderbeere","Goji-Beere","Maulbeere","Sanddorn","Hagebutte",
+          "Kirsche","Sauerkirsche","Pflaume","Zwetschge","Mirabelle","Reneklode","Aprikose","Pfirsich","Nektarine","Mango","Papaya","Ananas","Kiwi","Kiwibeere","Maracuja","Passionsfrucht","Guave","Litschi","Longan","Rambutan","Drachenfrucht","Kaki","Sharonfrucht","Granatapfel","Feige","Dattel","Weintraube","Wassermelone","Honigmelone","Cantaloupe-Melone","Galia-Melone","Sternfrucht","Jackfrucht","Durian","Mangostan","Cherimoya","Physalis","Kokosnuss","Avocado","Quitte","Mispel","Nashi-Birne","Tamarinde","Acerola","Açaí-Beere","Lucuma","Sapodilla","Brotfrucht","Jujube","Salak","Ugli-Frucht","Pawpaw","Kaktusfeige","Baumtomate","Pepino","Kapstachelbeere","Loquat","Feijoa","Hornmelone","Bilimbi","Langsat","Santol","Soursop","Zimtapfel","Weiße Sapote","Schwarze Sapote","Canistel","Mammiapfel","Barbadine","Tangelo","Minneola","Sudachi","Calamansi","Fingerlimette","Makrut-Limette","Navelorange","Satsuma","Bitterorange","Weinbergpfirsich","Plattpfirsich","Wildpflaume","Schlehe"
+        ]
+      },
+      {
+        category: "Gemüse",
+        variants: ["frisch", "gekocht", "gedämpft", "tiefgekühlt"],
+        items: [
+          "Tomate","Cherrytomate","Fleischtomate","Paprika rot","Paprika gelb","Paprika grün","Chili","Peperoni","Jalapeño","Habanero","Poblano","Zucchini","Aubergine","Gurke","Salatgurke","Gewürzgurke","Kürbis","Hokkaido-Kürbis","Butternut-Kürbis","Spaghettikürbis","Muskatkürbis","Patisson","Okra",
+          "Karotte","Möhre","Pastinake","Petersilienwurzel","Knollensellerie","Stangensellerie","Rote Bete","Gelbe Bete","Ringelbete","Rettich","Daikon","Radieschen","Steckrübe","Mairübe","Teltower Rübchen","Topinambur","Schwarzwurzel","Süßkartoffel","Kartoffel","Yamswurzel","Maniok","Taro","Meerrettich","Ingwer","Kurkuma",
+          "Zwiebel","Rote Zwiebel","Weiße Zwiebel","Schalotte","Frühlingszwiebel","Lauch","Porree","Knoblauch","Bärlauch","Schnittknoblauch",
+          "Brokkoli","Blumenkohl","Romanesco","Rosenkohl","Weißkohl","Rotkohl","Spitzkohl","Wirsing","Grünkohl","Pak Choi","Chinakohl","Kohlrabi","Palmkohl","Mizuna","Tatsoi","Komatsuna",
+          "Spinat","Mangold","Blattsalat","Kopfsalat","Eisbergsalat","Römersalat","Feldsalat","Rucola","Endivie","Radicchio","Chicorée","Frisée","Portulak","Postelein","Gartenkresse","Brunnenkresse","Sauerampfer","Löwenzahnblätter","Brennnesselblätter",
+          "Artischocke","Fenchel","Spargel grün","Spargel weiß","Bambussprossen","Palmherzen","Maiskolben","Zuckermais","Babymais","Edamame","Zuckerschote","Erbsenschote","Fenchelkraut","Lotuswurzel","Wasserkastanie","Jicama","Chayote","Bittermelone","Flaschenkürbis","Schlangengurke","Wachskürbis","Knollenziest","Cardy","Rhabarber","Kaktusblatt","Moringablätter","Cassavablätter","Amarantblätter","Süßkartoffelblätter","Kürbisblätter","Weinblätter","Shiso","Perilla","Wasserspinat","Malabarspinat","Neuseeländer Spinat","Meerkohl","Seespargel","Samphire","Kerbelrübe","Haferwurzel","Zuckerwurzel","Erdmandel","Ulluco","Oca","Mashua","Wasabiwurzel"
+        ]
+      },
+      {
+        category: "Getreide und Pseudogetreide",
+        variants: ["ganz", "gekocht", "Flocken", "Mehl", "Schrot"],
+        items: [
+          "Reis","Basmati-Reis","Jasminreis","Naturreis","Vollkornreis","Wildreis","Schwarzer Reis","Roter Reis","Sushireis","Klebreis","Risottoreis","Arborio-Reis","Carnaroli-Reis","Milchreis","Parboiled-Reis",
+          "Weizen","Hartweizen","Dinkel","Emmer","Einkorn","Khorasan-Weizen","Roggen","Gerste","Hafer","Nackthafer","Hirse","Goldhirse","Braunhirse","Sorghum","Teff","Mais","Buchweizen","Quinoa","Weiße Quinoa","Rote Quinoa","Schwarze Quinoa","Amarant","Fonio","Canihua","Triticale","Grünkern","Freekeh","Bulgur","Couscous","Polenta","Maisgrieß","Hartweizengrieß","Weichweizengrieß","Dinkelgrieß","Hafergrütze","Gerstengrütze","Buchweizengrütze","Reisgrieß","Quinoaflocken","Hirseflocken","Dinkelflocken","Roggenflocken","Gerstenflocken","Maisflocken","Reisflocken","Weizenkleie","Haferkleie","Dinkelkleie","Reiskleie","Weizenkeime","Haferreis","Dinkelreis","Rollgerste","Graupen","Perlgraupen"
+        ]
+      },
+      {
+        category: "Hülsenfrüchte",
+        variants: ["trocken", "gekocht", "aus der Dose"],
+        items: [
+          "Kichererbsen","Grüne Erbsen","Gelbe Erbsen","Schälerbsen","Linsen","Braune Linsen","Grüne Linsen","Rote Linsen","Gelbe Linsen","Belugalinsen","Puy-Linsen","Berglinsen","Tellerlinsen","Schwarze Linsen",
+          "Kidneybohnen","Schwarze Bohnen","Weiße Bohnen","Cannellini-Bohnen","Borlotti-Bohnen","Pintobohnen","Adzukibohnen","Mungbohnen","Sojabohnen","Limabohnen","Dicke Bohnen","Favabohnen","Feuerbohnen","Wachtelbohnen","Augenbohnen","Schwarzaugenbohnen","Flageolettbohnen","Marinebohnen","Anasazi-Bohnen","Lupinen","Süßlupinen","Straucherbsen","Taubenerbsen","Urdbohnen","Mattenbohnen","Mothbohnen","Hyazinthenbohnen","Jackbohnen","Goabohnen","Teparybohnen","Bambara-Erdnuss","Erdnuss","Kichererbse schwarz","Grammbohne","Urid Dal","Moong Dal","Chana Dal","Toor Dal","Masoor Dal","Gelbe Mungbohnen","Grüne Mungbohnen","Sojaschnetzel","Sojagranulat","Texturiertes Sojaprotein","Tempeh","Naturtofu","Räuchertofu","Seidentofu"
+        ]
+      },
+      {
+        category: "Nüsse und Samen",
+        variants: ["natur", "geröstet", "gemahlen"],
+        items: [
+          "Mandel","Haselnuss","Walnuss","Pekannuss","Cashewkern","Pistazie","Macadamianuss","Paranuss","Pinienkern","Erdnuss","Kastanie","Esskastanie","Maronen","Kokosraspel","Kokoschips","Tiger-Nuss","Pili-Nuss","Sacha-Inchi-Samen","Baru-Nuss",
+          "Sonnenblumenkerne","Kürbiskerne","Sesam","Schwarzer Sesam","Leinsamen","Goldleinsamen","Chiasamen","Hanfsamen","Mohn","Blaumohn","Weißmohn","Quinoasamen","Amarantsamen","Basilikumsamen","Flohsamen","Flohsamenschalen","Senfsamen gelb","Senfsamen braun","Senfsamen schwarz","Koriandersamen","Kreuzkümmelsamen","Fenchelsamen","Anissamen","Kümmelsamen","Dillsamen","Selleriesamen","Bockshornkleesamen","Nigella","Schwarzkümmel","Ajowan","Mahlab","Lotussamen","Wassermelonensamen","Melonenkerne","Traubenkerne","Aprikosenkerne","Pinoli","Kakaonibs","Kakaobohnen","Kaffeebohnen","Lupinenkerne","Moringasamen","Perillasamen","Kardamomsamen"
+        ]
+      },
+      {
+        category: "Kräuter",
+        variants: ["frisch", "getrocknet"],
+        items: [
+          "Petersilie","Glatte Petersilie","Krause Petersilie","Basilikum","Thai-Basilikum","Heiliges Basilikum","Zitronenbasilikum","Oregano","Majoran","Thymian","Zitronenthymian","Rosmarin","Salbei","Estragon","Dill","Schnittlauch","Kerbel","Koriandergrün","Minze","Pfefferminze","Spearmint","Zitronenmelisse","Bohnenkraut","Liebstöckel","Bärlauch","Sauerampfer","Pimpinelle","Ysop","Lavendel","Zitronenverbene","Stevia-Blätter","Currykraut","Lorbeer","Kaffirlimettenblätter","Curryblätter","Shiso","Perilla","Vietnam-Koriander","Thai-Koriander","Mexikanischer Koriander","Zitronengras","Pandannusblatt","Moringablätter","Brennnessel","Giersch","Löwenzahn","Schafgarbe","Beifuß","Waldmeister","Kapuzinerkresse","Brunnenkresse","Gartenkresse","Fenchelgrün","Selleriegrün","Karottengrün","Radieschengrün","Rote-Bete-Blätter","Knoblauchgrün","Zwiebelgrün","Mitsuba","Shungiku","Epazote","Hoja Santa","Papalo","Culantro"
+        ]
+      },
+      {
+        category: "Gewürze",
+        variants: ["ganz", "gemahlen"],
+        items: [
+          "Salz","Meersalz","Steinsalz","Fleur de Sel","Kala Namak","Pfeffer schwarz","Pfeffer weiß","Pfeffer grün","Pfeffer rot","Kubebenpfeffer","Szechuanpfeffer","Langer Pfeffer","Rosa Pfeffer","Kampotpfeffer","Timutpfeffer","Tasmanischer Pfeffer","Kreuzkümmel","Kümmel","Koriander","Fenchel","Anis","Sternanis","Zimt","Ceylon-Zimt","Cassia-Zimt","Kardamom grün","Kardamom schwarz","Nelke","Muskatnuss","Muskatblüte","Piment","Wacholderbeere","Vanille","Vanillepulver","Safran","Kurkuma","Ingwerpulver","Galgant","Paprikapulver edelsüß","Paprikapulver rosenscharf","Chilipulver","Cayennepfeffer","Chipotle","Ancho-Chili","Guajillo-Chili","Aleppo-Pfeffer","Urfa-Biber","Sumach","Za'atar","Ras el Hanout","Garam Masala","Currypulver","Madras Curry","Fünf-Gewürze-Pulver","Berbere","Harissa-Gewürz","Baharat","Dukkah","Vadouvan","Asafoetida","Bockshornklee","Ajowan","Nigella","Schwarzkümmel","Senfpulver","Knoblauchpulver","Zwiebelpulver","Tomatenpulver","Rote-Bete-Pulver","Selleriepulver","Meerrettichpulver","Amchur","Anardana","Tamarindenpulver","Limettenpulver","Zitronenschale","Orangenschale","Kakaopulver","Carobpulver","Matcha","Maca","Lucuma-Pulver","Açaí-Pulver","Mesquite-Pulver","Moringapulver","Spirulinapulver","Chlorellapulver","Kala Jeera","Mahlab","Tonka-Bohne"
+        ]
+      },
+      {
+        category: "Pilze",
+        variants: ["frisch", "getrocknet", "gegart"],
+        items: [
+          "Champignon","Brauner Champignon","Portobello","Austernpilz","Kräuterseitling","Shiitake","Enoki","Maitake","Shimeji","Mu-Err","Judasohr","Steinpilz","Pfifferling","Morchel","Trüffel","Sommertrüffel","Wintertrüffel","Krause Glucke","Parasol","Maronenröhrling","Birkenpilz","Rotkappe","Semmelstoppelpilz","Reizker","Schopftintling","Goldröhrling","Igelstachelbart","Pom-Pom-Pilz","Nameko","Eichhase","Silberohr","Tremella","Löwenmähne","Buchenpilz","Pioppino","Reishi","Cordyceps-Pilz","Königsausternpilz","Strohpilz","Matsutake"
+        ]
+      },
+      {
+        category: "Öle und Fette",
+        variants: ["kaltgepresst", "nativ"],
+        items: [
+          "Olivenöl","Rapsöl","Sonnenblumenöl","Distelöl","Leinöl","Walnussöl","Haselnussöl","Sesamöl","Kürbiskernöl","Erdnussöl","Avocadoöl","Kokosöl","Maiskeimöl","Sojaöl","Traubenkernöl","Mandelöl","Arganöl","Hanföl","Mohnöl","Schwarzkümmelöl","Reiskeimöl","Weizenkeimöl","Senföl","Safloröl","Macadamiaöl","Pistazienöl","Pinienkernöl","Chiaöl","Perillaöl","Kamelinaöl","Palmöl","Kakaobutter","Kokosfett","Sheabutter Lebensmittelqualität"
+        ]
+      },
+      {
+        category: "Algen und Meeresgemüse",
+        variants: ["getrocknet", "eingeweicht"],
+        items: [
+          "Nori","Wakame","Kombu","Dulse","Hijiki","Arame","Meeressalat","Irish Moss","Agar-Agar","Kelp","Meeresspaghetti","Mozuku","Aonori","Mekabu","Laver","Ulva","Chlorella","Spirulina","Blasentang","Zuckertang","Fingerkelp","Meertrauben","Queller","Seespargel"
+        ]
+      },
+      {
+        category: "Einfache vegane Lebensmittel",
+        variants: ["natur", "ungesüßt"],
+        items: [
+          "Haferdrink","Sojadrink","Mandeldrink","Reisdrink","Dinkeldrink","Erbsendrink","Kokosdrink","Haselnussdrink","Cashewdrink","Hanfdrink","Quinoadrink","Buchweizendrink","Sojajoghurt","Haferjoghurt","Kokosjoghurt","Mandeljoghurt","Cashewjoghurt","Sojaquark","Hummus","Tahini","Erdnussmus","Mandelmus","Cashewmus","Haselnussmus","Sesammus","Sonnenblumenkernmus","Kürbiskernmus","Kokosmus","Tomatenmark","Passierte Tomaten","Gehackte Tomaten","Apfelmus","Birnenmus","Dattelpaste","Agavendicksaft","Ahornsirup","Reissirup","Zuckerrübensirup","Melasse","Rohrohrzucker","Rübenzucker","Kokosblütenzucker","Traubenzucker","Maisstärke","Kartoffelstärke","Tapiokastärke","Pfeilwurzelstärke","Johannisbrotkernmehl","Guarkernmehl","Xanthan","Pektin","Agar-Agar","Hefeflocken","Trockenhefe","Frischhefe","Backpulver","Natron","Zitronensäure","Apfelessig","Weißweinessig","Rotweinessig","Reisessig","Balsamico-Essig","Sojasauce","Tamari","Shoyu","Miso hell","Miso dunkel","Natto","Seitan","Tempeh","Tofu natur","Räuchertofu","Seidentofu"
+        ]
+      }
+    ];
+
+    const veganBasicFoods = (() => {
+      const map = new Map();
+      const add = (name, category) => {
+        const clean = String(name || "").trim();
+        if (!clean) return;
+        const key = clean.toLocaleLowerCase("de-DE");
+        if (!map.has(key)) {
+          map.set(key, {
+            name: clean,
+            barcode: "",
+            vegan: true,
+            category,
+            source: "Lokale vegane Grundzutatenbibliothek"
+          });
+        }
+      };
+
+      basicFoodGroups.forEach(group => {
+        group.items.forEach(item => {
+          add(item, group.category);
+          group.variants.forEach(variant => add(`${item} ${variant}`, group.category));
+        });
+      });
+      return Array.from(map.values());
+    })();
+
     const recipes = [
       { name: "Tomatenpasta", ingredients: ["Nudeln", "Tomaten", "Knoblauch", "Olivenöl"], steps: "Nudeln kochen, Knoblauch anbraten, Tomaten dazugeben und alles vermengen." },
       { name: "Tofu Gemüse Pfanne", ingredients: ["Tofu", "Paprika", "Zucchini", "Sojasauce", "Reis"], steps: "Tofu anbraten, Gemüse dazugeben, mit Sojasauce abschmecken und mit Reis servieren." },
@@ -225,6 +346,7 @@
     ];
 
     let pantry = JSON.parse(localStorage.getItem("veganPantry") || "[]");
+    let pantryMeta = JSON.parse(localStorage.getItem("veganPantryMeta") || "{}");
     let shopping = JSON.parse(localStorage.getItem("veganShopping") || "[]");
     let learnedProducts = JSON.parse(localStorage.getItem("veganLearnedProducts") || "[]");
     let barcodeReader = null;
@@ -240,6 +362,7 @@
 
     function saveData() {
       localStorage.setItem("veganPantry", JSON.stringify(pantry));
+      localStorage.setItem("veganPantryMeta", JSON.stringify(pantryMeta));
       localStorage.setItem("veganShopping", JSON.stringify(shopping));
       localStorage.setItem("veganLearnedProducts", JSON.stringify(learnedProducts));
     }
@@ -254,17 +377,35 @@
       if (id === "shopping") renderShopping();
     }
 
-    function addToPantry(name) {
+    function addToPantry(name, veganStatus = "vegan") {
       if (!name) return;
-      if (!pantry.some(item => normalize(item) === normalize(name))) pantry.push(String(name).trim());
+      const cleanName = String(name).trim();
+      const key = normalize(cleanName);
+      if (!pantry.some(item => normalize(item) === key)) pantry.push(cleanName);
+      pantryMeta[key] = { status: veganStatus, updatedAt: Date.now() };
       saveData();
       renderPantry();
     }
 
     function removeFromPantry(name) {
-      pantry = pantry.filter(item => normalize(item) !== normalize(name));
+      const key = normalize(name);
+      pantry = pantry.filter(item => normalize(item) !== key);
+      delete pantryMeta[key];
       saveData();
       renderPantry();
+    }
+
+    function confirmPantryItemVegan(name) {
+      const key = normalize(name);
+      pantryMeta[key] = { status: "vegan", updatedAt: Date.now() };
+      saveData();
+      renderPantry();
+      renderRecipes();
+    }
+
+    function pantryItemStatus(name) {
+      const meta = pantryMeta[normalize(name)];
+      return meta && meta.status ? meta.status : "vegan";
     }
 
     function renderPantry() {
@@ -273,16 +414,62 @@
         container.innerHTML = '<div class="empty">Noch keine Zutaten im Vorrat.</div>';
         return;
       }
-      container.innerHTML = pantry.map(item => `
-        <div class="item">
-          <span>${escapeHtml(item)}</span>
-          <button class="danger" data-remove-pantry="${escapeHtml(item)}">Entfernen</button>
-        </div>`).join("");
+      container.innerHTML = pantry.map(item => {
+        const status = pantryItemStatus(item);
+        const statusLabel = status === "unknown"
+          ? '<span class="tag" style="background:#fff6db;color:#8a6200">⚠ Veganität unklar</span>'
+          : '<span class="tag">✓ vegan</span>';
+        return `
+          <div class="item" style="align-items:flex-start">
+            <div><strong>${escapeHtml(item)}</strong><div style="margin-top:5px">${statusLabel}</div></div>
+            <div style="display:grid;gap:6px">
+              ${status === "unknown" ? `<button class="secondary" data-confirm-vegan="${escapeHtml(item)}">Als vegan bestätigen</button>` : ""}
+              <button class="danger" data-remove-pantry="${escapeHtml(item)}">Entfernen</button>
+            </div>
+          </div>`;
+      }).join("");
       container.querySelectorAll("[data-remove-pantry]").forEach(btn => btn.addEventListener("click", () => removeFromPantry(btn.dataset.removePantry)));
+      container.querySelectorAll("[data-confirm-vegan]").forEach(btn => btn.addEventListener("click", () => confirmPantryItemVegan(btn.dataset.confirmVegan)));
+    }
+
+    function getBasicFoodExact(input) {
+      const wanted = normalize(input);
+      if (!wanted) return null;
+      return veganBasicFoods.find(item => normalize(item.name) === wanted) || null;
+    }
+
+    function getBasicFoodSuggestions(input, limit = 8) {
+      const wanted = normalize(input);
+      if (wanted.length < 2 || isBarcode(wanted)) return [];
+      return veganBasicFoods
+        .filter(item => normalize(item.name).includes(wanted))
+        .sort((a, b) => {
+          const an = normalize(a.name), bn = normalize(b.name);
+          const aStarts = an.startsWith(wanted) ? 0 : 1;
+          const bStarts = bn.startsWith(wanted) ? 0 : 1;
+          return aStarts - bStarts || a.name.length - b.name.length || a.name.localeCompare(b.name, "de");
+        })
+        .slice(0, limit);
+    }
+
+    function renderBasicFoodSuggestions() {
+      const input = document.getElementById("productInput");
+      const container = document.getElementById("basicFoodSuggestions");
+      const suggestions = getBasicFoodSuggestions(input.value);
+      container.innerHTML = suggestions.map(item => `
+        <button type="button" class="guess-chip" data-basic-food="${escapeHtml(item.name)}">${escapeHtml(item.name)}</button>
+      `).join("");
+      container.querySelectorAll("[data-basic-food]").forEach(button => {
+        button.addEventListener("click", () => {
+          input.value = button.dataset.basicFood;
+          container.innerHTML = "";
+          checkProduct();
+        });
+      });
     }
 
     function getLocalProduct(input) {
-      const all = [...learnedProducts, ...localProducts];
+      const all = [...learnedProducts, ...localProducts, ...veganBasicFoods];
       return all.find(item => normalize(item.name) === normalize(input) || String(item.barcode || "") === String(input).trim());
     }
 
@@ -479,12 +666,19 @@
         <div class="source">Quelle: ${escapeHtml(source)}</div>
         <div class="actions">
           ${classification.status === "vegan" ? `<button id="addCurrentProduct">Zum Vorrat hinzufügen</button>` : ""}
+          ${classification.status === "unknown" ? `<button id="addUnknownProduct" class="secondary">⚠ Trotz unklarer Veganität zum Vorrat hinzufügen</button>` : ""}
           <a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(barcode || name)}">Zusätzlich bei FDDB suchen</a>
         </div>
       `;
 
       const addButton = document.getElementById("addCurrentProduct");
-      if (addButton) addButton.addEventListener("click", () => addToPantry(name));
+      if (addButton) addButton.addEventListener("click", () => addToPantry(name, "vegan"));
+      const addUnknownButton = document.getElementById("addUnknownProduct");
+      if (addUnknownButton) addUnknownButton.addEventListener("click", () => {
+        addToPantry(name, "unknown");
+        addUnknownButton.textContent = "Zum Vorrat hinzugefügt (Veganität unklar)";
+        addUnknownButton.disabled = true;
+      });
     }
 
     function renderNotFound(query) {
@@ -1022,6 +1216,16 @@
         return;
       }
 
+      const basicFood = !isBarcode(input) ? getBasicFoodExact(input) : null;
+      if (basicFood) {
+        renderProduct(
+          basicFood,
+          { status: "vegan", reason: `Grundlegendes Lebensmittel aus der lokalen veganen Zutatenbibliothek (${basicFood.category}).` },
+          basicFood.source
+        );
+        return;
+      }
+
       button.disabled = true;
       button.textContent = "Suche laeuft...";
 
@@ -1084,6 +1288,7 @@
       const wanted = normalize(ingredient);
       const aliases = ingredientAliases[ingredient] || [wanted];
       return pantry.some(item => {
+        if (pantryItemStatus(item) === "unknown") return false;
         const inventoryItem = normalize(item);
         return inventoryItem === wanted || aliases.some(alias => inventoryItem.includes(normalize(alias)));
       });
@@ -1176,7 +1381,8 @@
     document.getElementById("stopScannerButton").addEventListener("click", () => stopBarcodeScanner());
     document.getElementById("productPhotoInput").addEventListener("change", event => analyzeProductPhoto(event.target.files && event.target.files[0]));
     document.getElementById("closePhotoButton").addEventListener("click", closePhotoRecognition);
-    document.getElementById("productInput").addEventListener("keydown", event => { if (event.key === "Enter") checkProduct(); });
+    document.getElementById("productInput").addEventListener("keydown", event => { if (event.key === "Enter") { document.getElementById("basicFoodSuggestions").innerHTML = ""; checkProduct(); } });
+    document.getElementById("productInput").addEventListener("input", renderBasicFoodSuggestions);
     document.getElementById("addPantryButton").addEventListener("click", () => {
       const input = document.getElementById("pantryInput");
       addToPantry(input.value);
@@ -1188,6 +1394,7 @@
     document.getElementById("refreshRecipesButton").addEventListener("click", renderRecipes);
     document.getElementById("clearShoppingButton").addEventListener("click", () => { shopping = []; saveData(); renderShopping(); });
 
+    document.getElementById("basicFoodCount").textContent = `${veganBasicFoods.length.toLocaleString("de-DE")} vegane Grundzutaten und Varianten lokal verfügbar.`;
     renderPantry();
     renderRecipes();
     renderShopping();
