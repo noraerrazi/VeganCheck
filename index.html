@@ -110,10 +110,20 @@
     .confidence { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
     .guess-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
     .guess-chip { width: auto; padding: 8px 10px; font-size: 0.86rem; background: #e9f1ea; color: var(--text); }
-    nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
+    nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(5, 1fr); z-index: 20; }
     nav button { background: #fff; color: var(--muted); border-radius: 0; padding: 12px 6px 10px; font-size: 0.78rem; font-weight: 700; }
     nav button.active { color: var(--primary); background: #f2f7f3; }
     .nav-icon { display: block; font-size: 1.2rem; margin-bottom: 2px; }
+
+    .account-grid { display: grid; gap: 10px; }
+    .account-state { display:flex; align-items:center; gap:8px; margin-top:10px; }
+    .sync-dot { width:10px; height:10px; border-radius:50%; background:#a0aaa3; flex:0 0 auto; }
+    .sync-dot.online { background:#2f7d4a; }
+    .sync-dot.busy { background:#c28a00; }
+    .sync-dot.error { background:#a92f2f; }
+    .account-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .account-actions.single { grid-template-columns:1fr; }
+    code.inline { background:#eef2ed; padding:2px 5px; border-radius:6px; font-size:.86em; }
     @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .app { padding: 12px 12px 88px; } }
   </style>
 </head>
@@ -196,6 +206,51 @@
         <button id="clearShoppingButton" class="danger" style="margin-top: 12px;">Liste leeren</button>
       </div>
     </section>
+
+    <section id="account" class="section">
+      <div class="card">
+        <h2>Online Speicherung</h2>
+        <p class="muted">Vorrat, Einkaufsliste und eigene Produkte können mit Supabase synchronisiert werden. Ohne Anmeldung bleibt die App weiterhin lokal nutzbar.</p>
+        <div class="account-state">
+          <span id="syncDot" class="sync-dot"></span>
+          <span id="syncStatus" class="muted">Nur lokale Speicherung aktiv.</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Supabase verbinden</h3>
+        <label for="supabaseUrlInput">Project URL</label>
+        <input id="supabaseUrlInput" type="url" autocomplete="off" placeholder="https://xxxx.supabase.co" />
+        <label for="supabaseKeyInput">Publishable Key</label>
+        <input id="supabaseKeyInput" type="password" autocomplete="off" placeholder="sb_publishable_... oder anon key" />
+        <button id="saveSupabaseConfigButton" type="button">Verbindung speichern</button>
+        <p class="muted small">Verwende hier ausschließlich den Publishable beziehungsweise anon Key. Niemals einen Secret oder service_role Key.</p>
+        <p class="muted small" style="margin-bottom:0">Vor der ersten Synchronisierung einmal <code class="inline">supabase_setup.sql</code> im Supabase SQL Editor ausführen.</p>
+      </div>
+
+      <div class="card" id="authCard">
+        <h3>Benutzerkonto</h3>
+        <div id="signedOutArea">
+          <label for="authEmail">E-Mail</label>
+          <input id="authEmail" type="email" autocomplete="email" placeholder="name@beispiel.de" />
+          <label for="authPassword">Passwort</label>
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="Mindestens 6 Zeichen" />
+          <div class="account-actions">
+            <button id="loginButton" type="button">Anmelden</button>
+            <button id="registerButton" class="secondary" type="button">Registrieren</button>
+          </div>
+        </div>
+        <div id="signedInArea" hidden>
+          <p>Angemeldet als <strong id="signedInEmail"></strong></p>
+          <div class="account-actions">
+            <button id="syncNowButton" type="button">Jetzt synchronisieren</button>
+            <button id="logoutButton" class="danger" type="button">Abmelden</button>
+          </div>
+        </div>
+        <div id="authMessage"></div>
+      </div>
+    </section>
+
   </main>
 
   <nav>
@@ -203,10 +258,12 @@
     <button class="nav-btn" data-target="pantry"><span class="nav-icon">🥕</span>Vorrat</button>
     <button class="nav-btn" data-target="recipes"><span class="nav-icon">🍲</span>Rezepte</button>
     <button class="nav-btn" data-target="shopping"><span class="nav-icon">🛒</span>Einkauf</button>
+    <button class="nav-btn" data-target="account"><span class="nav-icon">☁️</span>Konto</button>
   </nav>
 
   <script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const localProducts = [
       { name: "Haferdrink", barcode: "100001", vegan: true, source: "Lokale Beispieldaten" },
@@ -356,6 +413,15 @@
     let currentPhotoUrl = null;
     let photoWorker = null;
 
+    let supabaseClient = null;
+    let currentUser = null;
+    let cloudHydrating = false;
+    let cloudSyncTimer = null;
+    let cloudSyncInProgress = false;
+    let cloudSyncPending = false;
+
+    const SUPABASE_CONFIG_KEY = "veganSupabaseConfig";
+
     const normalize = value => String(value || "").trim().toLowerCase();
     const isBarcode = value => /^\d{8,14}$/.test(String(value || "").trim());
     const escapeHtml = value => String(value || "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
@@ -365,6 +431,7 @@
       localStorage.setItem("veganPantryMeta", JSON.stringify(pantryMeta));
       localStorage.setItem("veganShopping", JSON.stringify(shopping));
       localStorage.setItem("veganLearnedProducts", JSON.stringify(learnedProducts));
+      if (!cloudHydrating) scheduleCloudSync();
     }
 
     function showSection(id) {
@@ -375,6 +442,7 @@
       if (id === "pantry") renderPantry();
       if (id === "recipes") renderRecipes();
       if (id === "shopping") renderShopping();
+      if (id === "account") updateAccountUi();
     }
 
     function addToPantry(name, veganStatus = "vegan") {
@@ -431,6 +499,255 @@
       container.querySelectorAll("[data-remove-pantry]").forEach(btn => btn.addEventListener("click", () => removeFromPantry(btn.dataset.removePantry)));
       container.querySelectorAll("[data-confirm-vegan]").forEach(btn => btn.addEventListener("click", () => confirmPantryItemVegan(btn.dataset.confirmVegan)));
     }
+
+
+
+    function setSyncStatus(message, state = "") {
+      const text = document.getElementById("syncStatus");
+      const dot = document.getElementById("syncDot");
+      if (text) text.textContent = message;
+      if (dot) dot.className = `sync-dot ${state}`.trim();
+    }
+
+    function getSupabaseConfig() {
+      try { return JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || "null"); }
+      catch { return null; }
+    }
+
+    function initSupabaseClient() {
+      const config = getSupabaseConfig();
+      if (!config || !config.url || !config.key || !window.supabase || !window.supabase.createClient) {
+        supabaseClient = null;
+        currentUser = null;
+        setSyncStatus("Nur lokale Speicherung aktiv.");
+        updateAccountUi();
+        return false;
+      }
+      try {
+        supabaseClient = window.supabase.createClient(config.url, config.key, {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        });
+        document.getElementById("supabaseUrlInput").value = config.url;
+        document.getElementById("supabaseKeyInput").value = config.key;
+        setSyncStatus("Supabase verbunden. Anmeldung wird geprüft.", "busy");
+        return true;
+      } catch (error) {
+        console.error(error);
+        supabaseClient = null;
+        setSyncStatus("Supabase Konfiguration ist ungültig.", "error");
+        return false;
+      }
+    }
+
+    async function initializeSupabase() {
+      if (!initSupabaseClient()) return;
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) {
+        setSyncStatus(`Anmeldung konnte nicht geprüft werden: ${error.message}`, "error");
+        return;
+      }
+      currentUser = data.session?.user || null;
+      updateAccountUi();
+      if (currentUser) {
+        setSyncStatus("Angemeldet. Online Daten werden geladen.", "busy");
+        await pullAndMergeCloudState();
+      } else {
+        setSyncStatus("Supabase verbunden. Bitte anmelden.");
+      }
+
+      supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+        currentUser = session?.user || null;
+        updateAccountUi();
+        if (currentUser) {
+          setSyncStatus("Angemeldet. Online Daten werden geladen.", "busy");
+          await pullAndMergeCloudState();
+        } else {
+          setSyncStatus("Supabase verbunden. Nicht angemeldet.");
+        }
+      });
+    }
+
+    function updateAccountUi() {
+      const signedOut = document.getElementById("signedOutArea");
+      const signedIn = document.getElementById("signedInArea");
+      const email = document.getElementById("signedInEmail");
+      if (!signedOut || !signedIn || !email) return;
+      signedOut.hidden = !!currentUser;
+      signedIn.hidden = !currentUser;
+      email.textContent = currentUser?.email || "";
+    }
+
+    async function saveSupabaseConfig() {
+      const url = document.getElementById("supabaseUrlInput").value.trim().replace(/\/$/, "");
+      const key = document.getElementById("supabaseKeyInput").value.trim();
+      const message = document.getElementById("authMessage");
+      if (!/^https:\/\//i.test(url) || !key) {
+        message.innerHTML = '<div class="status unknown">Bitte eine gültige Supabase Project URL und einen Publishable Key eingeben.</div>';
+        return;
+      }
+      localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, key }));
+      message.innerHTML = '<div class="status info">Verbindung gespeichert.</div>';
+      await initializeSupabase();
+    }
+
+    async function registerUser() {
+      if (!supabaseClient) return showAuthError("Bitte zuerst Supabase verbinden.");
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!email || password.length < 6) return showAuthError("Bitte E-Mail und ein Passwort mit mindestens 6 Zeichen eingeben.");
+      setSyncStatus("Registrierung läuft...", "busy");
+      const { data, error } = await supabaseClient.auth.signUp({ email, password });
+      if (error) return showAuthError(error.message);
+      if (data.session) {
+        currentUser = data.session.user;
+        showAuthInfo("Registrierung erfolgreich. Du bist angemeldet.");
+        await pullAndMergeCloudState();
+      } else {
+        showAuthInfo("Registrierung erfolgreich. Bitte bestätige deine E-Mail und melde dich danach an.");
+        setSyncStatus("E-Mail Bestätigung ausstehend.");
+      }
+      updateAccountUi();
+    }
+
+    async function loginUser() {
+      if (!supabaseClient) return showAuthError("Bitte zuerst Supabase verbinden.");
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!email || !password) return showAuthError("Bitte E-Mail und Passwort eingeben.");
+      setSyncStatus("Anmeldung läuft...", "busy");
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) return showAuthError(error.message);
+      currentUser = data.user;
+      showAuthInfo("Anmeldung erfolgreich.");
+      updateAccountUi();
+      await pullAndMergeCloudState();
+    }
+
+    async function logoutUser() {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      currentUser = null;
+      updateAccountUi();
+      setSyncStatus("Abgemeldet. Lokale Speicherung bleibt aktiv.");
+      showAuthInfo("Du bist abgemeldet.");
+    }
+
+    function showAuthError(message) {
+      const el = document.getElementById("authMessage");
+      if (el) el.innerHTML = `<div class="status unknown">${escapeHtml(message)}</div>`;
+      setSyncStatus("Synchronisierung nicht verfügbar.", "error");
+    }
+
+    function showAuthInfo(message) {
+      const el = document.getElementById("authMessage");
+      if (el) el.innerHTML = `<div class="status info">${escapeHtml(message)}</div>`;
+    }
+
+    function scheduleCloudSync() {
+      if (!supabaseClient || !currentUser || cloudHydrating) return;
+      clearTimeout(cloudSyncTimer);
+      cloudSyncTimer = setTimeout(() => pushCloudState(), 500);
+    }
+
+    async function pushCloudState() {
+      if (!supabaseClient || !currentUser) return;
+      if (!navigator.onLine) {
+        setSyncStatus("Offline. Änderungen bleiben lokal und können später synchronisiert werden.");
+        return;
+      }
+      if (cloudSyncInProgress) {
+        cloudSyncPending = true;
+        return;
+      }
+      cloudSyncInProgress = true;
+      setSyncStatus("Synchronisierung läuft...", "busy");
+      const uid = currentUser.id;
+      try {
+        const pantryRows = pantry.map(name => ({
+          user_id: uid,
+          name,
+          vegan_status: pantryItemStatus(name)
+        }));
+        const shoppingRows = shopping.map(name => ({ user_id: uid, name, checked: false }));
+        const productRows = learnedProducts.map(product => ({
+          user_id: uid,
+          name: product.name || "Unbekanntes Produkt",
+          barcode: product.barcode || null,
+          vegan_status: product.vegan === true ? "vegan" : product.vegan === false ? "nonvegan" : "unknown",
+          source: product.source || "Lokal bestätigt"
+        }));
+
+        for (const table of ["pantry_items", "shopping_items", "custom_products"]) {
+          const { error } = await supabaseClient.from(table).delete().eq("user_id", uid);
+          if (error) throw error;
+        }
+        if (pantryRows.length) {
+          const { error } = await supabaseClient.from("pantry_items").insert(pantryRows);
+          if (error) throw error;
+        }
+        if (shoppingRows.length) {
+          const { error } = await supabaseClient.from("shopping_items").insert(shoppingRows);
+          if (error) throw error;
+        }
+        if (productRows.length) {
+          const { error } = await supabaseClient.from("custom_products").insert(productRows);
+          if (error) throw error;
+        }
+        setSyncStatus(`Online synchronisiert · ${new Date().toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"})}`, "online");
+      } catch (error) {
+        console.error("Supabase Sync Fehler", error);
+        setSyncStatus(`Sync Fehler: ${error.message || error}`, "error");
+      } finally {
+        cloudSyncInProgress = false;
+        if (cloudSyncPending) {
+          cloudSyncPending = false;
+          scheduleCloudSync();
+        }
+      }
+    }
+
+    async function pullAndMergeCloudState() {
+      if (!supabaseClient || !currentUser) return;
+      setSyncStatus("Online Daten werden geladen...", "busy");
+      try {
+        const [pantryRes, shoppingRes, productsRes] = await Promise.all([
+          supabaseClient.from("pantry_items").select("name, vegan_status"),
+          supabaseClient.from("shopping_items").select("name, checked"),
+          supabaseClient.from("custom_products").select("name, barcode, vegan_status, source")
+        ]);
+        const error = pantryRes.error || shoppingRes.error || productsRes.error;
+        if (error) throw error;
+
+        cloudHydrating = true;
+        for (const row of pantryRes.data || []) {
+          if (!pantry.some(item => normalize(item) === normalize(row.name))) pantry.push(row.name);
+          pantryMeta[normalize(row.name)] = { status: row.vegan_status || "vegan", updatedAt: Date.now() };
+        }
+        for (const row of shoppingRes.data || []) {
+          if (!shopping.some(item => normalize(item) === normalize(row.name))) shopping.push(row.name);
+        }
+        for (const row of productsRes.data || []) {
+          const key = row.barcode ? `b:${row.barcode}` : `n:${normalize(row.name)}`;
+          const exists = learnedProducts.some(p => (p.barcode ? `b:${p.barcode}` : `n:${normalize(p.name)}`) === key);
+          if (!exists) learnedProducts.push({
+            name: row.name,
+            barcode: row.barcode || "",
+            vegan: row.vegan_status === "vegan" ? true : row.vegan_status === "nonvegan" ? false : null,
+            source: row.source || "Supabase"
+          });
+        }
+        saveData();
+        cloudHydrating = false;
+        renderPantry();
+        renderShopping();
+        renderRecipes();
+        await pushCloudState();
+      } catch (error) {
+        cloudHydrating = false;
+        console.error("Supabase Laden fehlgeschlagen", error);
+        setSyncStatus(`Online Daten konnten nicht geladen werden: ${error.message || error}`, "error");
+      }
+    }
+
 
     function getBasicFoodExact(input) {
       const wanted = normalize(input);
@@ -1393,11 +1710,18 @@
     });
     document.getElementById("refreshRecipesButton").addEventListener("click", renderRecipes);
     document.getElementById("clearShoppingButton").addEventListener("click", () => { shopping = []; saveData(); renderShopping(); });
+    document.getElementById("saveSupabaseConfigButton").addEventListener("click", saveSupabaseConfig);
+    document.getElementById("registerButton").addEventListener("click", registerUser);
+    document.getElementById("loginButton").addEventListener("click", loginUser);
+    document.getElementById("logoutButton").addEventListener("click", logoutUser);
+    document.getElementById("syncNowButton").addEventListener("click", async () => { await pullAndMergeCloudState(); });
 
     document.getElementById("basicFoodCount").textContent = `${veganBasicFoods.length.toLocaleString("de-DE")} vegane Grundzutaten und Varianten lokal verfügbar.`;
     renderPantry();
     renderRecipes();
     renderShopping();
+    window.addEventListener("online", () => { if (currentUser) pushCloudState(); });
+    initializeSupabase();
   </script>
 </body>
 </html>
