@@ -96,9 +96,9 @@
     .hint { border-left: 4px solid var(--primary); padding-left: 10px; }
     .scanner-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fbfcfa; }
     .scanner-panel[hidden] { display: none; }
-    #barcodeReader { position: relative; width: 100%; overflow: hidden; border-radius: 12px; background: #111; aspect-ratio: 4 / 3; }
+    #barcodeReader { position: relative; width: 100%; overflow: hidden; border-radius: 14px; background: #111; aspect-ratio: 4 / 3; }
     #barcodeVideo { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
-    .scan-frame { position: absolute; left: 7%; right: 7%; top: 37%; height: 26%; border: 3px solid rgba(255,255,255,.92); border-radius: 12px; box-shadow: 0 0 0 999px rgba(0,0,0,.18); pointer-events: none; }
+    .scan-frame { position: absolute; left: 9%; right: 9%; top: 26%; height: 48%; border: 3px solid rgba(255,255,255,.92); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.18); pointer-events: none; }
     .scan-line { position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; background: rgba(255,255,255,.95); pointer-events: none; }
     .scanner-status { margin: 8px 0 0; text-align: center; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
@@ -139,7 +139,13 @@
 
       <div class="card hint">
         <strong>Datenquellen</strong>
-        <p class="muted">Automatische Suche über Open Food Facts. Eigene bestätigte Produkte werden lokal gespeichert. FDDB steht als zusätzliche manuelle Suche bereit, wenn kein sicherer Treffer gefunden wird.</p>
+        <p class="muted">Suche in mehreren Ebenen: Open Food Facts, optional FoodRepo und lokale bestaetigte Produkte. Die Veganitaet wird zusaetzlich anhand der Zutaten geprueft.</p>
+        <details style="margin-top:10px">
+          <summary style="cursor:pointer;font-weight:700">FoodRepo optional aktivieren</summary>
+          <p class="muted small">FoodRepo benoetigt einen eigenen API Schluessel. Der Schluessel wird nur fuer die aktuelle Sitzung verwendet und nicht in dieser Datei gespeichert.</p>
+          <label for="foodRepoApiKey">FoodRepo API Schluessel</label>
+          <input id="foodRepoApiKey" type="password" autocomplete="off" placeholder="Optionaler API Schluessel" />
+        </details>
       </div>
     </section>
 
@@ -158,8 +164,8 @@
 
     <section id="recipes" class="section">
       <div class="card">
-        <h2>Vegane Rezepte</h2>
-        <p class="muted">Rezepte mit möglichst vielen vorhandenen Zutaten erscheinen zuerst.</p>
+        <h2>Vegane Rezepte aus deinem Vorrat</h2>
+        <p class="muted">Die Vorschläge richten sich nach deinem aktuellen Inventar. Fehlende Zutaten werden angezeigt und können direkt zur Einkaufsliste hinzugefügt werden.</p>
         <button id="refreshRecipesButton" class="secondary">Rezepte aktualisieren</button>
       </div>
       <div id="recipeList"></div>
@@ -261,21 +267,94 @@
       return all.find(item => normalize(item.name) === normalize(input) || String(item.barcode || "") === String(input).trim());
     }
 
+    const nonVeganIngredientRules = [
+      ["milch", "Milch"], ["milk", "Milch"], ["molke", "Molke"], ["whey", "Molke"],
+      ["butter", "Butter"], ["kaese", "Kaese"], ["käse", "Kaese"], ["cheese", "Kaese"],
+      ["ei", "Ei"], ["eier", "Ei"], ["egg", "Ei"], ["albumin", "Ei/Albumin"],
+      ["honig", "Honig"], ["honey", "Honig"], ["gelatine", "Gelatine"], ["gelatin", "Gelatine"],
+      ["karmin", "Karmin"], ["carmine", "Karmin"], ["e120", "E120/Karmin"],
+      ["schellack", "Schellack"], ["shellac", "Schellack"], ["e904", "E904/Schellack"],
+      ["bienenwachs", "Bienenwachs"], ["beeswax", "Bienenwachs"], ["e901", "E901/Bienenwachs"],
+      ["kasein", "Kasein"], ["casein", "Kasein"], ["laktose", "Laktose"], ["lactose", "Laktose"],
+      ["fisch", "Fisch"], ["fish", "Fisch"], ["anchovis", "Anchovis"], ["anchovy", "Anchovis"],
+      ["fleisch", "Fleisch"], ["meat", "Fleisch"], ["schmalz", "Schmalz"], ["lard", "Schmalz"],
+      ["kollagen", "Kollagen"], ["collagen", "Kollagen"]
+    ];
+
+    const uncertainIngredientRules = [
+      ["aroma", "Aroma"], ["flavour", "Aroma"], ["flavor", "Aroma"],
+      ["vitamin d3", "Vitamin D3"], ["cholecalciferol", "Vitamin D3"],
+      ["e471", "E471"], ["mono- und diglyceride", "Mono- und Diglyceride"],
+      ["mono und diglyceride", "Mono- und Diglyceride"], ["glycerin", "Glycerin"], ["glycerol", "Glycerin"]
+    ];
+
+    function analyzeIngredientText(text) {
+      const normalized = normalize(text)
+        .replace(/[_*]/g, " ")
+        .replace(/\s+/g, " ");
+      if (!normalized) return { nonVegan: [], uncertain: [] };
+
+      const nonVegan = [];
+      const uncertain = [];
+      nonVeganIngredientRules.forEach(([term, label]) => {
+        if (normalized.includes(term) && !nonVegan.includes(label)) nonVegan.push(label);
+      });
+      uncertainIngredientRules.forEach(([term, label]) => {
+        if (normalized.includes(term) && !uncertain.includes(label)) uncertain.push(label);
+      });
+      return { nonVegan, uncertain };
+    }
+
+    function classifyByIngredients(text, sourceName = "Zutatenanalyse") {
+      const evidence = analyzeIngredientText(text);
+      if (evidence.nonVegan.length) {
+        return {
+          status: "nonvegan",
+          reason: `${sourceName}: tierische oder nicht vegane Bestandteile erkannt: ${evidence.nonVegan.join(", ")}.`,
+          evidence
+        };
+      }
+      if (evidence.uncertain.length) {
+        return {
+          status: "unknown",
+          reason: `${sourceName}: keine eindeutig tierische Zutat erkannt, aber unklare Bestandteile vorhanden: ${evidence.uncertain.join(", ")}.`,
+          evidence
+        };
+      }
+      return {
+        status: "unknown",
+        reason: text ? `${sourceName}: keine bekannte tierische Zutat erkannt. Ohne eindeutige Vegan Kennzeichnung bleibt der Status vorsichtshalber unklar.` : `${sourceName}: keine Zutatenliste vorhanden.`,
+        evidence
+      };
+    }
+
     function classifyOffProduct(product) {
       const analysis = product.ingredients_analysis_tags || [];
       const labels = product.labels_tags || [];
       const allergens = product.allergens_tags || [];
+      const ingredients = product.ingredients_text_de || product.ingredients_text || "";
+      const ingredientCheck = analyzeIngredientText(ingredients);
 
-      if (analysis.includes("en:non-vegan")) return { status: "nonvegan", reason: "Open Food Facts kennzeichnet mindestens eine Zutat als nicht vegan." };
-      if (analysis.includes("en:vegan")) return { status: "vegan", reason: "Open Food Facts stuft die Zutatenanalyse als vegan ein." };
-      if (labels.includes("en:vegan")) return { status: "vegan", reason: "Das Produkt ist in Open Food Facts als vegan gekennzeichnet." };
+      if (analysis.includes("en:non-vegan") || ingredientCheck.nonVegan.length) {
+        const detail = ingredientCheck.nonVegan.length ? ` Erkannte Bestandteile: ${ingredientCheck.nonVegan.join(", ")}.` : "";
+        return { status: "nonvegan", reason: `Nicht vegane Bestandteile wurden erkannt.${detail}`, evidence: ingredientCheck };
+      }
 
       const animalAllergens = ["en:milk", "en:eggs", "en:fish", "en:crustaceans", "en:molluscs"];
-      const foundAnimalAllergen = allergens.some(tag => animalAllergens.includes(tag));
-      if (foundAnimalAllergen) return { status: "nonvegan", reason: "Die Zutaten oder Allergendaten enthalten tierische Bestandteile." };
+      if (allergens.some(tag => animalAllergens.includes(tag))) {
+        return { status: "nonvegan", reason: "Die Allergendaten weisen auf tierische Bestandteile hin.", evidence: ingredientCheck };
+      }
 
-      if (analysis.includes("en:maybe-vegan")) return { status: "unknown", reason: "Ein oder mehrere Bestandteile sind nicht eindeutig als vegan bewertet." };
-      return { status: "unknown", reason: "Für dieses Produkt liegen nicht genügend eindeutige Veganitätsdaten vor." };
+      if (analysis.includes("en:vegan") || labels.includes("en:vegan")) {
+        return { status: "vegan", reason: "Open Food Facts kennzeichnet das Produkt beziehungsweise die Zutatenanalyse als vegan.", evidence: ingredientCheck };
+      }
+
+      if (analysis.includes("en:maybe-vegan") || ingredientCheck.uncertain.length) {
+        const detail = ingredientCheck.uncertain.length ? ` Unklare Bestandteile: ${ingredientCheck.uncertain.join(", ")}.` : "";
+        return { status: "unknown", reason: `Die Veganitaet ist nicht eindeutig.${detail}`, evidence: ingredientCheck };
+      }
+
+      return classifyByIngredients(ingredients, "Eigene Zutatenpruefung");
     }
 
     async function fetchOpenFoodFactsByBarcode(barcode) {
@@ -303,6 +382,55 @@
       return data.products.find(p => normalize(p.product_name_de || p.product_name).includes(query)) || data.products[0];
     }
 
+    function currentFoodRepoApiKey() {
+      const input = document.getElementById("foodRepoApiKey");
+      return input ? input.value.trim() : "";
+    }
+
+    function pickTranslation(value) {
+      if (!value) return "";
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) return value.map(pickTranslation).find(Boolean) || "";
+      if (typeof value === "object") {
+        return value.de || value.de_DE || value.en || Object.values(value).map(pickTranslation).find(Boolean) || "";
+      }
+      return String(value);
+    }
+
+    function normalizeFoodRepoProduct(raw) {
+      const item = raw && raw.attributes ? raw.attributes : raw || {};
+      const images = Array.isArray(item.images) ? item.images : [];
+      const frontImage = images.find(img => Array.isArray(img.categories) && img.categories.some(c => normalize(c).includes("front"))) || images[0] || {};
+      return {
+        name: pickTranslation(item.display_name_translations) || pickTranslation(item.name_translations) || item.barcode || "Unbekanntes Produkt",
+        barcode: item.barcode || "",
+        ingredients_text: pickTranslation(item.ingredients_translations),
+        image_front_small_url: frontImage.thumb || frontImage.medium || "",
+        source: "FoodRepo"
+      };
+    }
+
+    async function fetchFoodRepoByBarcode(barcode) {
+      const apiKey = currentFoodRepoApiKey();
+      if (!apiKey || !isBarcode(barcode)) return null;
+      const url = `https://www.foodrepo.org/api/v3/products?barcodes=${encodeURIComponent(barcode)}`;
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/vnd.api+json",
+          "Authorization": `Token token="${apiKey.replace(/"/g, "")}"`
+        }
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const first = Array.isArray(data.data) ? data.data[0] : (Array.isArray(data) ? data[0] : null);
+      return first ? normalizeFoodRepoProduct(first) : null;
+    }
+
+    function classifyFoodRepoProduct(product) {
+      return classifyByIngredients(product.ingredients_text || "", "FoodRepo Zutatenpruefung");
+    }
+
     function fddbUrl(query) {
       return `https://fddb.mobi/search/?lang=de&cat=mobile-de&search=${encodeURIComponent(query)}`;
     }
@@ -327,6 +455,8 @@
         </div>
         <div class="status ${classification.status}">${statusText}<div class="small" style="margin-top:4px;font-weight:500">${escapeHtml(classification.reason)}</div></div>
         ${ingredients ? `<div class="ingredients"><strong>Zutaten:</strong> ${escapeHtml(ingredients)}</div>` : ""}
+        ${classification.evidence && classification.evidence.nonVegan && classification.evidence.nonVegan.length ? `<div class="status nonvegan small">Erkannt: ${classification.evidence.nonVegan.map(escapeHtml).join(", ")}</div>` : ""}
+        ${classification.evidence && classification.evidence.uncertain && classification.evidence.uncertain.length && classification.status !== "nonvegan" ? `<div class="status unknown small">Unklar: ${classification.evidence.uncertain.map(escapeHtml).join(", ")}</div>` : ""}
         <div class="source">Quelle: ${escapeHtml(source)}</div>
         <div class="actions">
           ${classification.status === "vegan" ? `<button id="addCurrentProduct">Zum Vorrat hinzufügen</button>` : ""}
@@ -541,62 +671,130 @@
 
       const local = getLocalProduct(input);
       if (local && learnedProducts.includes(local)) {
-        renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Dieses Produkt wurde zuvor lokal bestätigt." }, local.source || "Lokale Daten");
+        renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Dieses Produkt wurde zuvor lokal bestaetigt." }, local.source || "Lokale Daten");
         return;
       }
 
       button.disabled = true;
-      button.textContent = "Suche läuft...";
-      result.innerHTML = '<div class="status info">Open Food Facts wird abgefragt.</div>';
+      button.textContent = "Suche laeuft...";
 
       try {
-        const offProduct = isBarcode(input) ? await fetchOpenFoodFactsByBarcode(input) : await fetchOpenFoodFactsByName(input);
+        result.innerHTML = '<div class="status info">1/3 Open Food Facts wird abgefragt.</div>';
+        let offProduct = null;
+        try {
+          offProduct = isBarcode(input) ? await fetchOpenFoodFactsByBarcode(input) : await fetchOpenFoodFactsByName(input);
+        } catch (error) {
+          console.info("Open Food Facts nicht erreichbar", error);
+        }
         if (offProduct) {
-          renderProduct(offProduct, classifyOffProduct(offProduct), "Open Food Facts");
+          renderProduct(offProduct, classifyOffProduct(offProduct), "Open Food Facts + eigene Zutatenpruefung");
           return;
         }
 
+        if (isBarcode(input) && currentFoodRepoApiKey()) {
+          result.innerHTML = '<div class="status info">2/3 FoodRepo wird abgefragt.</div>';
+          try {
+            const foodRepoProduct = await fetchFoodRepoByBarcode(input);
+            if (foodRepoProduct) {
+              renderProduct(foodRepoProduct, classifyFoodRepoProduct(foodRepoProduct), "FoodRepo + eigene Zutatenpruefung");
+              return;
+            }
+          } catch (error) {
+            console.info("FoodRepo nicht erreichbar oder Browserzugriff blockiert", error);
+          }
+        }
+
+        result.innerHTML = '<div class="status info">3/3 Lokale Produktdaten werden geprueft.</div>';
         if (local) {
-          renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Treffer aus den lokalen Beispieldaten." }, local.source || "Lokale Daten");
+          renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Treffer aus den lokalen Produktdaten." }, local.source || "Lokale Daten");
           return;
         }
 
         renderNotFound(input);
-      } catch (error) {
-        if (local) {
-          renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Online Abfrage nicht erreichbar. Treffer aus lokalen Daten." }, local.source || "Lokale Daten");
-        } else {
-          result.innerHTML = `
-            <div class="status unknown">Online Suche derzeit nicht erreichbar.</div>
-            <div class="actions"><a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(input)}">Bei FDDB suchen</a></div>`;
-        }
       } finally {
         button.disabled = false;
         button.textContent = "Produkt suchen";
       }
     }
 
+    const ingredientAliases = {
+      "Nudeln": ["nudeln", "pasta", "spaghetti", "penne", "fusilli", "macaroni", "tagliatelle"],
+      "Tomaten": ["tomate", "tomaten", "passierte tomaten", "tomatenstücke", "tomatensauce"],
+      "Tofu": ["tofu"],
+      "Kokosmilch": ["kokosmilch"],
+      "Kichererbsen": ["kichererbse", "kichererbsen"],
+      "Paprika": ["paprika"],
+      "Zucchini": ["zucchini"],
+      "Reis": ["reis"],
+      "Sojasauce": ["sojasauce", "soja sauce"],
+      "Spinat": ["spinat"],
+      "Knoblauch": ["knoblauch"],
+      "Olivenöl": ["olivenöl", "olivenoel"],
+      "Currypulver": ["currypulver", "curry"]
+    };
+
+    function pantryHasIngredient(ingredient) {
+      const wanted = normalize(ingredient);
+      const aliases = ingredientAliases[ingredient] || [wanted];
+      return pantry.some(item => {
+        const inventoryItem = normalize(item);
+        return inventoryItem === wanted || aliases.some(alias => inventoryItem.includes(normalize(alias)));
+      });
+    }
+
     function getRecipeScore(recipe) {
-      const present = recipe.ingredients.filter(ingredient => pantry.some(item => normalize(item) === normalize(ingredient)));
-      const missing = recipe.ingredients.filter(ingredient => !pantry.some(item => normalize(item) === normalize(ingredient)));
-      return { present, missing, percentage: Math.round((present.length / recipe.ingredients.length) * 100) };
+      const present = recipe.ingredients.filter(ingredient => pantryHasIngredient(ingredient));
+      const missing = recipe.ingredients.filter(ingredient => !pantryHasIngredient(ingredient));
+      return {
+        present,
+        missing,
+        percentage: Math.round((present.length / recipe.ingredients.length) * 100)
+      };
     }
 
     function renderRecipes() {
       const container = document.getElementById("recipeList");
-      const scored = recipes.map(recipe => ({ recipe, ...getRecipeScore(recipe) })).sort((a, b) => a.missing.length - b.missing.length);
-      container.innerHTML = scored.map(({ recipe, present, missing, percentage }, index) => `
+
+      if (!pantry.length) {
+        container.innerHTML = `
+          <div class="card">
+            <div class="empty">Dein Vorrat ist noch leer. Füge zuerst vegane Produkte oder Zutaten hinzu. Danach werden passende Rezepte vorgeschlagen.</div>
+          </div>`;
+        return;
+      }
+
+      const scored = recipes
+        .map(recipe => ({ recipe, ...getRecipeScore(recipe) }))
+        .sort((a, b) =>
+          b.present.length - a.present.length ||
+          b.percentage - a.percentage ||
+          a.missing.length - b.missing.length
+        );
+
+      const matching = scored.filter(item => item.present.length > 0);
+      const visibleRecipes = matching.length ? matching : scored;
+
+      const intro = matching.length
+        ? `<div class="card"><strong>${matching.length} passende Rezept${matching.length === 1 ? "" : "e"} gefunden</strong><p class="muted" style="margin-bottom:0">Auch Rezepte mit fehlenden Zutaten werden angezeigt. Diese Zutaten kannst du direkt auf die Einkaufsliste setzen.</p></div>`
+        : `<div class="card"><strong>Noch kein direkter Rezepttreffer</strong><p class="muted" style="margin-bottom:0">Für deine aktuellen Produkte gibt es noch keine direkte Übereinstimmung. Hier sind trotzdem vegane Rezeptideen, deren fehlende Zutaten du zur Einkaufsliste hinzufügen kannst.</p></div>`;
+
+      container.innerHTML = intro + visibleRecipes.map(({ recipe, present, missing, percentage }, index) => `
         <div class="card recipe">
           <h3>${escapeHtml(recipe.name)}</h3>
           <span class="tag">${percentage}% vorhanden</span>
-          <p><strong>Vorhanden:</strong> ${present.length ? present.map(escapeHtml).join(", ") : "noch nichts"}</p>
-          <p><strong>Fehlt:</strong> ${missing.length ? missing.map(escapeHtml).join(", ") : "nichts"}</p>
+          ${missing.length
+            ? `<span class="tag">${missing.length} Zutat${missing.length === 1 ? "" : "en"} fehlt${missing.length === 1 ? "" : "en"}</span>`
+            : `<span class="tag">Sofort kochbar</span>`}
+          <p><strong>Aus deinem Vorrat:</strong> ${present.length ? present.map(escapeHtml).join(", ") : "keine passende Zutat"}</p>
+          <p><strong>Fehlende Zutaten:</strong> ${missing.length ? missing.map(escapeHtml).join(", ") : "keine"}</p>
           <p class="muted">${escapeHtml(recipe.steps)}</p>
-          ${missing.length ? `<button data-recipe-index="${index}">Fehlende Zutaten zur Einkaufsliste</button>` : `<div class="status vegan">Du kannst dieses Rezept sofort kochen.</div>`}
+          ${missing.length
+            ? `<button data-recipe-index="${index}">${missing.length} fehlende Zutat${missing.length === 1 ? "" : "en"} zur Einkaufsliste</button>`
+            : `<div class="status vegan">Alle Zutaten sind vorhanden. Du kannst dieses Rezept sofort kochen.</div>`}
         </div>`).join("");
 
       container.querySelectorAll("[data-recipe-index]").forEach(btn => {
-        btn.addEventListener("click", () => addMissingIngredients(scored[Number(btn.dataset.recipeIndex)].missing));
+        btn.addEventListener("click", () => addMissingIngredients(visibleRecipes[Number(btn.dataset.recipeIndex)].missing));
       });
     }
 
