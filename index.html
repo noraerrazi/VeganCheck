@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2f7d4a" />
+  <title>VeganCheck</title>
+  <style>
+    :root {
+      --bg: #f6f8f4;
+      --card: #ffffff;
+      --text: #1e2a22;
+      --muted: #66736a;
+      --primary: #2f7d4a;
+      --primary-dark: #245f39;
+      --danger: #a92f2f;
+      --warning: #8c6500;
+      --border: #dce5dc;
+      --soft: #edf5ee;
+      --shadow: 0 8px 24px rgba(30, 42, 34, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .app { max-width: 760px; margin: 0 auto; padding: 14px 14px 92px; }
+    header { padding: 10px 2px 16px; }
+    header h1 { margin: 0 0 4px; font-size: 1.7rem; }
+    header p { margin: 0; color: var(--muted); }
+    .section { display: none; }
+    .section.active { display: block; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+    h2, h3 { margin-top: 0; }
+    label { display: block; font-weight: 700; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 13px 14px;
+      font-size: 1rem;
+      border: 1px solid #cbd7cb;
+      border-radius: 12px;
+      outline: none;
+      background: #fff;
+      margin-bottom: 10px;
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 125, 74, 0.12); }
+    button, .button-link {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--primary);
+      color: #fff;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button:hover, .button-link:hover { background: var(--primary-dark); }
+    button.secondary, .button-link.secondary { background: #e9f1ea; color: var(--text); }
+    button.danger { background: #f6e6e6; color: var(--danger); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .status { margin-top: 12px; padding: 12px; border-radius: 12px; font-weight: 700; }
+    .status.vegan { background: #e7f6eb; color: #1d6b37; }
+    .status.nonvegan { background: #fdeaea; color: #962f2f; }
+    .status.unknown { background: #fff6db; color: var(--warning); }
+    .status.info { background: #eef3f8; color: #3b556b; }
+    .muted { color: var(--muted); font-size: 0.94rem; }
+    .small { font-size: 0.84rem; }
+    .source { margin-top: 8px; color: var(--muted); font-size: 0.82rem; }
+    .product-head { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+    .product-image { width: 74px; height: 74px; border-radius: 12px; object-fit: contain; border: 1px solid var(--border); background: #fff; }
+    .product-title { margin: 0; font-size: 1.1rem; }
+    .ingredients { margin-top: 10px; font-size: 0.9rem; line-height: 1.45; }
+    .actions { display: grid; gap: 8px; margin-top: 10px; }
+    .list { display: grid; gap: 8px; }
+    .item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    .item button { width: auto; padding: 8px 10px; font-size: 0.9rem; }
+    .recipe { border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 10px; background: #fff; }
+    .recipe h3 { margin-bottom: 6px; }
+    .tag { display: inline-block; margin-top: 4px; padding: 5px 8px; border-radius: 999px; background: var(--soft); color: #2b6440; font-size: 0.84rem; font-weight: 700; }
+    .empty { color: var(--muted); text-align: center; padding: 18px 8px; }
+    .hint { border-left: 4px solid var(--primary); padding-left: 10px; }
+    nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
+    nav button { background: #fff; color: var(--muted); border-radius: 0; padding: 12px 6px 10px; font-size: 0.78rem; font-weight: 700; }
+    nav button.active { color: var(--primary); background: #f2f7f3; }
+    .nav-icon { display: block; font-size: 1.2rem; margin-bottom: 2px; }
+    @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .app { padding: 12px 12px 88px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>VeganCheck</h1>
+      <p>Produkte prüfen, Vorrat verwalten, vegan kochen.</p>
+    </header>
+
+    <section id="check" class="section active">
+      <div class="card">
+        <h2>Produkt prüfen</h2>
+        <p class="muted">Am zuverlässigsten funktioniert die Suche mit EAN oder Barcode.</p>
+        <label for="productInput">Produktname oder Barcode</label>
+        <input id="productInput" inputmode="search" autocomplete="off" placeholder="z. B. 3017624010701" />
+        <button id="checkButton">Produkt suchen</button>
+        <div id="checkResult"></div>
+      </div>
+
+      <div class="card hint">
+        <strong>Datenquellen</strong>
+        <p class="muted">Automatische Suche über Open Food Facts. Eigene bestätigte Produkte werden lokal gespeichert. FDDB steht als zusätzliche manuelle Suche bereit, wenn kein sicherer Treffer gefunden wird.</p>
+      </div>
+    </section>
+
+    <section id="pantry" class="section">
+      <div class="card">
+        <h2>Mein Vorrat</h2>
+        <label for="pantryInput">Vegane Zutat hinzufügen</label>
+        <div class="row">
+          <input id="pantryInput" placeholder="z. B. Paprika" />
+          <button id="addPantryButton">Hinzufügen</button>
+        </div>
+        <p class="muted">Füge hier nur Zutaten hinzu, deren Veganität du selbst geprüft hast.</p>
+      </div>
+      <div class="card"><div id="pantryList" class="list"></div></div>
+    </section>
+
+    <section id="recipes" class="section">
+      <div class="card">
+        <h2>Vegane Rezepte</h2>
+        <p class="muted">Rezepte mit möglichst vielen vorhandenen Zutaten erscheinen zuerst.</p>
+        <button id="refreshRecipesButton" class="secondary">Rezepte aktualisieren</button>
+      </div>
+      <div id="recipeList"></div>
+    </section>
+
+    <section id="shopping" class="section">
+      <div class="card">
+        <h2>Einkaufsliste</h2>
+        <div id="shoppingList" class="list"></div>
+        <button id="clearShoppingButton" class="danger" style="margin-top: 12px;">Liste leeren</button>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="nav-btn active" data-target="check"><span class="nav-icon">🔎</span>Prüfen</button>
+    <button class="nav-btn" data-target="pantry"><span class="nav-icon">🥕</span>Vorrat</button>
+    <button class="nav-btn" data-target="recipes"><span class="nav-icon">🍲</span>Rezepte</button>
+    <button class="nav-btn" data-target="shopping"><span class="nav-icon">🛒</span>Einkauf</button>
+  </nav>
+
+  <script>
+    const localProducts = [
+      { name: "Haferdrink", barcode: "100001", vegan: true, source: "Lokale Beispieldaten" },
+      { name: "Tofu", barcode: "100002", vegan: true, source: "Lokale Beispieldaten" },
+      { name: "Nudeln", barcode: "100003", vegan: true, source: "Lokale Beispieldaten" },
+      { name: "Tomaten", barcode: "100004", vegan: true, source: "Lokale Beispieldaten" },
+      { name: "Kokosmilch", barcode: "100005", vegan: true, source: "Lokale Beispieldaten" },
+      { name: "Milchschokolade", barcode: "200001", vegan: false, source: "Lokale Beispieldaten" },
+      { name: "Eier", barcode: "200002", vegan: false, source: "Lokale Beispieldaten" },
+      { name: "Honig", barcode: "200003", vegan: false, source: "Lokale Beispieldaten" }
+    ];
+
+    const recipes = [
+      { name: "Tomatenpasta", ingredients: ["Nudeln", "Tomaten", "Knoblauch", "Olivenöl"], steps: "Nudeln kochen, Knoblauch anbraten, Tomaten dazugeben und alles vermengen." },
+      { name: "Tofu Gemüse Pfanne", ingredients: ["Tofu", "Paprika", "Zucchini", "Sojasauce", "Reis"], steps: "Tofu anbraten, Gemüse dazugeben, mit Sojasauce abschmecken und mit Reis servieren." },
+      { name: "Kokos Curry", ingredients: ["Kokosmilch", "Kichererbsen", "Paprika", "Currypulver", "Reis"], steps: "Gemüse und Kichererbsen anbraten, Kokosmilch und Currypulver dazugeben und köcheln lassen." },
+      { name: "Tofu Pasta", ingredients: ["Nudeln", "Tofu", "Tomaten", "Spinat", "Knoblauch"], steps: "Tofu anbraten, Tomaten und Spinat dazugeben und mit Nudeln vermischen." }
+    ];
+
+    let pantry = JSON.parse(localStorage.getItem("veganPantry") || "[]");
+    let shopping = JSON.parse(localStorage.getItem("veganShopping") || "[]");
+    let learnedProducts = JSON.parse(localStorage.getItem("veganLearnedProducts") || "[]");
+
+    const normalize = value => String(value || "").trim().toLowerCase();
+    const isBarcode = value => /^\d{8,14}$/.test(String(value || "").trim());
+    const escapeHtml = value => String(value || "").replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[char]));
+
+    function saveData() {
+      localStorage.setItem("veganPantry", JSON.stringify(pantry));
+      localStorage.setItem("veganShopping", JSON.stringify(shopping));
+      localStorage.setItem("veganLearnedProducts", JSON.stringify(learnedProducts));
+    }
+
+    function showSection(id) {
+      document.querySelectorAll(".section").forEach(section => section.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      document.querySelectorAll(".nav-btn").forEach(button => button.classList.toggle("active", button.dataset.target === id));
+      if (id === "pantry") renderPantry();
+      if (id === "recipes") renderRecipes();
+      if (id === "shopping") renderShopping();
+    }
+
+    function addToPantry(name) {
+      if (!name) return;
+      if (!pantry.some(item => normalize(item) === normalize(name))) pantry.push(String(name).trim());
+      saveData();
+      renderPantry();
+    }
+
+    function removeFromPantry(name) {
+      pantry = pantry.filter(item => normalize(item) !== normalize(name));
+      saveData();
+      renderPantry();
+    }
+
+    function renderPantry() {
+      const container = document.getElementById("pantryList");
+      if (!pantry.length) {
+        container.innerHTML = '<div class="empty">Noch keine Zutaten im Vorrat.</div>';
+        return;
+      }
+      container.innerHTML = pantry.map(item => `
+        <div class="item">
+          <span>${escapeHtml(item)}</span>
+          <button class="danger" data-remove-pantry="${escapeHtml(item)}">Entfernen</button>
+        </div>`).join("");
+      container.querySelectorAll("[data-remove-pantry]").forEach(btn => btn.addEventListener("click", () => removeFromPantry(btn.dataset.removePantry)));
+    }
+
+    function getLocalProduct(input) {
+      const all = [...learnedProducts, ...localProducts];
+      return all.find(item => normalize(item.name) === normalize(input) || String(item.barcode || "") === String(input).trim());
+    }
+
+    function classifyOffProduct(product) {
+      const analysis = product.ingredients_analysis_tags || [];
+      const labels = product.labels_tags || [];
+      const allergens = product.allergens_tags || [];
+
+      if (analysis.includes("en:non-vegan")) return { status: "nonvegan", reason: "Open Food Facts kennzeichnet mindestens eine Zutat als nicht vegan." };
+      if (analysis.includes("en:vegan")) return { status: "vegan", reason: "Open Food Facts stuft die Zutatenanalyse als vegan ein." };
+      if (labels.includes("en:vegan")) return { status: "vegan", reason: "Das Produkt ist in Open Food Facts als vegan gekennzeichnet." };
+
+      const animalAllergens = ["en:milk", "en:eggs", "en:fish", "en:crustaceans", "en:molluscs"];
+      const foundAnimalAllergen = allergens.some(tag => animalAllergens.includes(tag));
+      if (foundAnimalAllergen) return { status: "nonvegan", reason: "Die Zutaten oder Allergendaten enthalten tierische Bestandteile." };
+
+      if (analysis.includes("en:maybe-vegan")) return { status: "unknown", reason: "Ein oder mehrere Bestandteile sind nicht eindeutig als vegan bewertet." };
+      return { status: "unknown", reason: "Für dieses Produkt liegen nicht genügend eindeutige Veganitätsdaten vor." };
+    }
+
+    async function fetchOpenFoodFactsByBarcode(barcode) {
+      const fields = [
+        "code", "product_name", "product_name_de", "brands", "image_front_small_url",
+        "ingredients_text", "ingredients_text_de", "ingredients_analysis_tags", "labels_tags",
+        "allergens_tags", "traces_tags"
+      ].join(",");
+      const url = `https://world.openfoodfacts.org/api/v3/product/${encodeURIComponent(barcode)}.json?fields=${encodeURIComponent(fields)}`;
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (!data.product) return null;
+      return data.product;
+    }
+
+    async function fetchOpenFoodFactsByName(name) {
+      const fields = "code,product_name,product_name_de,brands,image_front_small_url,ingredients_text,ingredients_text_de,ingredients_analysis_tags,labels_tags,allergens_tags,traces_tags";
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=5&fields=${encodeURIComponent(fields)}`;
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const data = await response.json();
+      if (!data.products || !data.products.length) return null;
+      const query = normalize(name);
+      return data.products.find(p => normalize(p.product_name_de || p.product_name).includes(query)) || data.products[0];
+    }
+
+    function fddbUrl(query) {
+      return `https://fddb.mobi/search/?lang=de&cat=mobile-de&search=${encodeURIComponent(query)}`;
+    }
+
+    function renderProduct(product, classification, source) {
+      const result = document.getElementById("checkResult");
+      const name = product.product_name_de || product.product_name || product.name || "Unbekanntes Produkt";
+      const barcode = product.code || product.barcode || "";
+      const brand = product.brands || "";
+      const image = product.image_front_small_url || "";
+      const ingredients = product.ingredients_text_de || product.ingredients_text || "";
+      const statusText = classification.status === "vegan" ? "✓ Vegan" : classification.status === "nonvegan" ? "✕ Nicht vegan" : "? Veganität unklar";
+
+      result.innerHTML = `
+        <div class="product-head">
+          ${image ? `<img class="product-image" src="${escapeHtml(image)}" alt="Produktbild" />` : ""}
+          <div>
+            <h3 class="product-title">${escapeHtml(name)}</h3>
+            ${brand ? `<div class="muted">${escapeHtml(brand)}</div>` : ""}
+            ${barcode ? `<div class="muted small">Barcode: ${escapeHtml(barcode)}</div>` : ""}
+          </div>
+        </div>
+        <div class="status ${classification.status}">${statusText}<div class="small" style="margin-top:4px;font-weight:500">${escapeHtml(classification.reason)}</div></div>
+        ${ingredients ? `<div class="ingredients"><strong>Zutaten:</strong> ${escapeHtml(ingredients)}</div>` : ""}
+        <div class="source">Quelle: ${escapeHtml(source)}</div>
+        <div class="actions">
+          ${classification.status === "vegan" ? `<button id="addCurrentProduct">Zum Vorrat hinzufügen</button>` : ""}
+          <a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(barcode || name)}">Zusätzlich bei FDDB suchen</a>
+        </div>
+      `;
+
+      const addButton = document.getElementById("addCurrentProduct");
+      if (addButton) addButton.addEventListener("click", () => addToPantry(name));
+    }
+
+    function renderNotFound(query) {
+      const result = document.getElementById("checkResult");
+      result.innerHTML = `
+        <div class="status unknown">Kein eindeutiger automatischer Treffer gefunden.</div>
+        <p class="muted">Prüfe den Barcode zusätzlich bei FDDB. Wenn du das Produkt dort findest und sicher vegan ist, kannst du es anschließend lokal speichern.</p>
+        <div class="actions">
+          <a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(query)}">Bei FDDB suchen</a>
+          <button id="confirmLocalVegan">Ich habe geprüft: Produkt ist vegan</button>
+        </div>
+      `;
+      document.getElementById("confirmLocalVegan").addEventListener("click", () => saveConfirmedProduct(query));
+    }
+
+    function saveConfirmedProduct(query) {
+      const value = String(query).trim();
+      const product = {
+        name: isBarcode(value) ? `Produkt ${value}` : value,
+        barcode: isBarcode(value) ? value : "",
+        vegan: true,
+        source: "Lokal vom Nutzer bestätigt"
+      };
+      learnedProducts = learnedProducts.filter(item => !(product.barcode && item.barcode === product.barcode) && normalize(item.name) !== normalize(product.name));
+      learnedProducts.unshift(product);
+      saveData();
+      renderProduct(product, { status: "vegan", reason: "Du hast dieses Produkt lokal als vegan bestätigt." }, product.source);
+    }
+
+    async function checkProduct() {
+      const inputEl = document.getElementById("productInput");
+      const button = document.getElementById("checkButton");
+      const result = document.getElementById("checkResult");
+      const input = inputEl.value.trim();
+      if (!input) {
+        result.innerHTML = '<div class="status unknown">Bitte Produktname oder Barcode eingeben.</div>';
+        return;
+      }
+
+      const local = getLocalProduct(input);
+      if (local && learnedProducts.includes(local)) {
+        renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Dieses Produkt wurde zuvor lokal bestätigt." }, local.source || "Lokale Daten");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Suche läuft...";
+      result.innerHTML = '<div class="status info">Open Food Facts wird abgefragt.</div>';
+
+      try {
+        const offProduct = isBarcode(input) ? await fetchOpenFoodFactsByBarcode(input) : await fetchOpenFoodFactsByName(input);
+        if (offProduct) {
+          renderProduct(offProduct, classifyOffProduct(offProduct), "Open Food Facts");
+          return;
+        }
+
+        if (local) {
+          renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Treffer aus den lokalen Beispieldaten." }, local.source || "Lokale Daten");
+          return;
+        }
+
+        renderNotFound(input);
+      } catch (error) {
+        if (local) {
+          renderProduct(local, { status: local.vegan ? "vegan" : "nonvegan", reason: "Online Abfrage nicht erreichbar. Treffer aus lokalen Daten." }, local.source || "Lokale Daten");
+        } else {
+          result.innerHTML = `
+            <div class="status unknown">Online Suche derzeit nicht erreichbar.</div>
+            <div class="actions"><a class="button-link secondary" target="_blank" rel="noopener" href="${fddbUrl(input)}">Bei FDDB suchen</a></div>`;
+        }
+      } finally {
+        button.disabled = false;
+        button.textContent = "Produkt suchen";
+      }
+    }
+
+    function getRecipeScore(recipe) {
+      const present = recipe.ingredients.filter(ingredient => pantry.some(item => normalize(item) === normalize(ingredient)));
+      const missing = recipe.ingredients.filter(ingredient => !pantry.some(item => normalize(item) === normalize(ingredient)));
+      return { present, missing, percentage: Math.round((present.length / recipe.ingredients.length) * 100) };
+    }
+
+    function renderRecipes() {
+      const container = document.getElementById("recipeList");
+      const scored = recipes.map(recipe => ({ recipe, ...getRecipeScore(recipe) })).sort((a, b) => a.missing.length - b.missing.length);
+      container.innerHTML = scored.map(({ recipe, present, missing, percentage }, index) => `
+        <div class="card recipe">
+          <h3>${escapeHtml(recipe.name)}</h3>
+          <span class="tag">${percentage}% vorhanden</span>
+          <p><strong>Vorhanden:</strong> ${present.length ? present.map(escapeHtml).join(", ") : "noch nichts"}</p>
+          <p><strong>Fehlt:</strong> ${missing.length ? missing.map(escapeHtml).join(", ") : "nichts"}</p>
+          <p class="muted">${escapeHtml(recipe.steps)}</p>
+          ${missing.length ? `<button data-recipe-index="${index}">Fehlende Zutaten zur Einkaufsliste</button>` : `<div class="status vegan">Du kannst dieses Rezept sofort kochen.</div>`}
+        </div>`).join("");
+
+      container.querySelectorAll("[data-recipe-index]").forEach(btn => {
+        btn.addEventListener("click", () => addMissingIngredients(scored[Number(btn.dataset.recipeIndex)].missing));
+      });
+    }
+
+    function addMissingIngredients(items) {
+      items.forEach(item => {
+        if (!shopping.some(existing => normalize(existing) === normalize(item))) shopping.push(item);
+      });
+      saveData();
+      showSection("shopping");
+    }
+
+    function removeShoppingItem(name) {
+      shopping = shopping.filter(item => normalize(item) !== normalize(name));
+      saveData();
+      renderShopping();
+    }
+
+    function renderShopping() {
+      const container = document.getElementById("shoppingList");
+      if (!shopping.length) {
+        container.innerHTML = '<div class="empty">Die Einkaufsliste ist leer.</div>';
+        return;
+      }
+      container.innerHTML = shopping.map(item => `
+        <div class="item"><span>☐ ${escapeHtml(item)}</span><button class="danger" data-remove-shopping="${escapeHtml(item)}">Löschen</button></div>`).join("");
+      container.querySelectorAll("[data-remove-shopping]").forEach(btn => btn.addEventListener("click", () => removeShoppingItem(btn.dataset.removeShopping)));
+    }
+
+    document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener("click", () => showSection(button.dataset.target)));
+    document.getElementById("checkButton").addEventListener("click", checkProduct);
+    document.getElementById("productInput").addEventListener("keydown", event => { if (event.key === "Enter") checkProduct(); });
+    document.getElementById("addPantryButton").addEventListener("click", () => {
+      const input = document.getElementById("pantryInput");
+      addToPantry(input.value);
+      input.value = "";
+    });
+    document.getElementById("pantryInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") { addToPantry(event.target.value); event.target.value = ""; }
+    });
+    document.getElementById("refreshRecipesButton").addEventListener("click", renderRecipes);
+    document.getElementById("clearShoppingButton").addEventListener("click", () => { shopping = []; saveData(); renderShopping(); });
+
+    renderPantry();
+    renderRecipes();
+    renderShopping();
+  </script>
+</body>
+</html>
