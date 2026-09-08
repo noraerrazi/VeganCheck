@@ -94,6 +94,11 @@
     .tag { display: inline-block; margin-top: 4px; padding: 5px 8px; border-radius: 999px; background: var(--soft); color: #2b6440; font-size: 0.84rem; font-weight: 700; }
     .empty { color: var(--muted); text-align: center; padding: 18px 8px; }
     .hint { border-left: 4px solid var(--primary); padding-left: 10px; }
+    .scanner-panel { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fbfcfa; }
+    .scanner-panel[hidden] { display: none; }
+    #barcodeReader { width: 100%; overflow: hidden; border-radius: 12px; background: #111; }
+    #barcodeReader video { border-radius: 12px; }
+    .scanner-status { margin: 8px 0 0; text-align: center; }
     nav { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--border); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 20; }
     nav button { background: #fff; color: var(--muted); border-radius: 0; padding: 12px 6px 10px; font-size: 0.78rem; font-weight: 700; }
     nav button.active { color: var(--primary); background: #f2f7f3; }
@@ -114,7 +119,15 @@
         <p class="muted">Am zuverlässigsten funktioniert die Suche mit EAN oder Barcode.</p>
         <label for="productInput">Produktname oder Barcode</label>
         <input id="productInput" inputmode="search" autocomplete="off" placeholder="z. B. 3017624010701" />
-        <button id="checkButton">Produkt suchen</button>
+        <div class="row">
+          <button id="checkButton">Produkt suchen</button>
+          <button id="startScannerButton" class="secondary" type="button">📷 Barcode scannen</button>
+        </div>
+        <div id="scannerPanel" class="scanner-panel" hidden>
+          <div id="barcodeReader"></div>
+          <p id="scannerStatus" class="muted scanner-status">Kamera wird vorbereitet.</p>
+          <button id="stopScannerButton" class="danger" type="button">Scanner schließen</button>
+        </div>
         <div id="checkResult"></div>
       </div>
 
@@ -162,6 +175,7 @@
     <button class="nav-btn" data-target="shopping"><span class="nav-icon">🛒</span>Einkauf</button>
   </nav>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js" integrity="sha512-r6rDA7W6ZeQhvl8S7yRVQUKVHdexq+GAlNkNNqVC7YyIV+NwqCTJe2hDWCiffTyRNOeGEzRRJ9ifvRm/HCzGYg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
     const localProducts = [
       { name: "Haferdrink", barcode: "100001", vegan: true, source: "Lokale Beispieldaten" },
@@ -184,6 +198,9 @@
     let pantry = JSON.parse(localStorage.getItem("veganPantry") || "[]");
     let shopping = JSON.parse(localStorage.getItem("veganShopping") || "[]");
     let learnedProducts = JSON.parse(localStorage.getItem("veganLearnedProducts") || "[]");
+    let html5QrCode = null;
+    let scannerRunning = false;
+    let scanLocked = false;
 
     const normalize = value => String(value || "").trim().toLowerCase();
     const isBarcode = value => /^\d{8,14}$/.test(String(value || "").trim());
@@ -196,6 +213,7 @@
     }
 
     function showSection(id) {
+      if (id !== "check" && scannerRunning) stopBarcodeScanner();
       document.querySelectorAll(".section").forEach(section => section.classList.remove("active"));
       document.getElementById(id).classList.add("active");
       document.querySelectorAll(".nav-btn").forEach(button => button.classList.toggle("active", button.dataset.target === id));
@@ -340,6 +358,92 @@
       renderProduct(product, { status: "vegan", reason: "Du hast dieses Produkt lokal als vegan bestätigt." }, product.source);
     }
 
+    async function startBarcodeScanner() {
+      const panel = document.getElementById("scannerPanel");
+      const status = document.getElementById("scannerStatus");
+      const startButton = document.getElementById("startScannerButton");
+
+      if (typeof Html5Qrcode === "undefined") {
+        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Der Kamera Scanner konnte nicht geladen werden. Prüfe deine Internetverbindung.</div>';
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Dieser Browser unterstützt keinen Kamerazugriff. Nutze einen aktuellen Browser auf dem Smartphone.</div>';
+        return;
+      }
+
+      panel.hidden = false;
+      startButton.disabled = true;
+      status.textContent = "Kamera wird gestartet. Bitte Kamerazugriff erlauben.";
+      document.getElementById("checkResult").innerHTML = "";
+
+      try {
+        if (!html5QrCode) {
+          html5QrCode = new Html5Qrcode("barcodeReader", {
+            formatsToSupport: [
+              Html5QrcodeSupportedFormats.EAN_13,
+              Html5QrcodeSupportedFormats.EAN_8,
+              Html5QrcodeSupportedFormats.UPC_A,
+              Html5QrcodeSupportedFormats.UPC_E,
+              Html5QrcodeSupportedFormats.CODE_128
+            ],
+            verbose: false
+          });
+        }
+
+        scanLocked = false;
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: (width, height) => ({
+              width: Math.max(160, Math.min(width - 20, Math.floor(width * 0.82))),
+              height: Math.max(90, Math.min(height - 20, 140))
+            })
+          },
+          async decodedText => {
+            if (scanLocked) return;
+            scanLocked = true;
+            const barcode = String(decodedText || "").trim();
+            document.getElementById("productInput").value = barcode;
+            status.textContent = `Barcode erkannt: ${barcode}`;
+            await stopBarcodeScanner(false);
+            await checkProduct();
+            scanLocked = false;
+          },
+          () => {}
+        );
+
+        scannerRunning = true;
+        status.textContent = "Halte den Barcode ruhig und gut beleuchtet vor die Kamera.";
+      } catch (error) {
+        scannerRunning = false;
+        startButton.disabled = false;
+        panel.hidden = true;
+        document.getElementById("checkResult").innerHTML = '<div class="status unknown">Kamera konnte nicht gestartet werden. Erlaube den Kamerazugriff und öffne die App über HTTPS, zum Beispiel über GitHub Pages.</div>';
+      }
+    }
+
+    async function stopBarcodeScanner(clearStatus = true) {
+      const panel = document.getElementById("scannerPanel");
+      const status = document.getElementById("scannerStatus");
+      const startButton = document.getElementById("startScannerButton");
+
+      try {
+        if (html5QrCode && scannerRunning) await html5QrCode.stop();
+        if (html5QrCode) html5QrCode.clear();
+        html5QrCode = null;
+      } catch (error) {
+        console.warn("Scanner konnte nicht sauber beendet werden.", error);
+      } finally {
+        scannerRunning = false;
+        panel.hidden = true;
+        startButton.disabled = false;
+        if (clearStatus) status.textContent = "";
+      }
+    }
+
     async function checkProduct() {
       const inputEl = document.getElementById("productInput");
       const button = document.getElementById("checkButton");
@@ -438,6 +542,8 @@
 
     document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener("click", () => showSection(button.dataset.target)));
     document.getElementById("checkButton").addEventListener("click", checkProduct);
+    document.getElementById("startScannerButton").addEventListener("click", startBarcodeScanner);
+    document.getElementById("stopScannerButton").addEventListener("click", () => stopBarcodeScanner());
     document.getElementById("productInput").addEventListener("keydown", event => { if (event.key === "Enter") checkProduct(); });
     document.getElementById("addPantryButton").addEventListener("click", () => {
       const input = document.getElementById("pantryInput");
