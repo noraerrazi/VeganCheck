@@ -382,10 +382,46 @@
     })();
 
     const recipes = [
-      { name: "Tomatenpasta", ingredients: ["Nudeln", "Tomaten", "Knoblauch", "Olivenöl"], steps: "Nudeln kochen, Knoblauch anbraten, Tomaten dazugeben und alles vermengen." },
-      { name: "Tofu Gemüse Pfanne", ingredients: ["Tofu", "Paprika", "Zucchini", "Sojasauce", "Reis"], steps: "Tofu anbraten, Gemüse dazugeben, mit Sojasauce abschmecken und mit Reis servieren." },
-      { name: "Kokos Curry", ingredients: ["Kokosmilch", "Kichererbsen", "Paprika", "Currypulver", "Reis"], steps: "Gemüse und Kichererbsen anbraten, Kokosmilch und Currypulver dazugeben und köcheln lassen." },
-      { name: "Tofu Pasta", ingredients: ["Nudeln", "Tofu", "Tomaten", "Spinat", "Knoblauch"], steps: "Tofu anbraten, Tomaten und Spinat dazugeben und mit Nudeln vermischen." }
+      { name: "Tofu Gemüse Pfanne", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Paprika", "Zucchini", "Brokkoli", "Sojasauce", "Reis"], steps: "Reis kochen. Tofu knusprig anbraten, Gemüse zugeben, mit Sojasauce würzen und zusammen servieren." },
+      { name: "Linsen Bolognese", tags: ["High Protein", "Gemüsereich"], ingredients: ["Linsen", "Tomaten", "Karotten", "Sellerie", "Zwiebel", "Knoblauch", "Nudeln"], steps: "Gemüse anbraten, Linsen und Tomaten zugeben, weich köcheln und mit Nudeln servieren." },
+      { name: "Kichererbsen Gemüse Curry", tags: ["High Protein", "Gemüsereich"], ingredients: ["Kichererbsen", "Brokkoli", "Paprika", "Spinat", "Kokosmilch", "Currypulver", "Reis"], steps: "Gemüse anbraten, Kichererbsen und Kokosmilch zugeben, würzen und mit Reis servieren." },
+      { name: "Bohnen Chili", tags: ["High Protein", "Gemüsereich"], ingredients: ["Kidneybohnen", "Schwarze Bohnen", "Tomaten", "Mais", "Paprika", "Zwiebel", "Knoblauch"], steps: "Zwiebel und Paprika anbraten, restliche Zutaten zugeben und kräftig einkochen lassen." },
+      { name: "Protein Bowl mit Tofu", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Quinoa", "Brokkoli", "Karotten", "Gurke", "Avocado", "Sesam"], steps: "Quinoa garen, Tofu anbraten, Gemüse vorbereiten und alles als Bowl anrichten." },
+      { name: "Linsen Dal mit Spinat", tags: ["High Protein", "Gemüsereich"], ingredients: ["Rote Linsen", "Spinat", "Tomaten", "Zwiebel", "Knoblauch", "Ingwer", "Currypulver"], steps: "Zwiebel, Knoblauch und Ingwer anbraten, Linsen und Tomaten zugeben, garen und Spinat unterheben." },
+      { name: "Edamame Reis Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Edamame", "Reis", "Gurke", "Karotten", "Rotkohl", "Avocado", "Sojasauce"], steps: "Reis garen, Gemüse schneiden und mit Edamame und Sojasauce als Bowl anrichten." },
+      { name: "Tempeh Brokkoli Pfanne", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tempeh", "Brokkoli", "Paprika", "Karotten", "Sojasauce", "Knoblauch", "Reis"], steps: "Tempeh anbraten, Gemüse zugeben, würzen und mit Reis servieren." },
+      { name: "Kichererbsen Salat", tags: ["High Protein", "Frisch"], ingredients: ["Kichererbsen", "Gurke", "Tomaten", "Paprika", "Petersilie", "Zitrone", "Olivenöl"], steps: "Alle Zutaten klein schneiden, vermengen und mit Zitrone und Olivenöl abschmecken." },
+      { name: "Quinoa Gemüse Pfanne", tags: ["Proteinreich", "Gemüsereich"], ingredients: ["Quinoa", "Zucchini", "Paprika", "Brokkoli", "Kichererbsen", "Knoblauch"], steps: "Quinoa garen, Gemüse anbraten, Kichererbsen zugeben und alles vermengen." },
+      { name: "Tofu Scramble", tags: ["High Protein", "Schnell"], ingredients: ["Tofu", "Spinat", "Tomaten", "Paprika", "Zwiebel", "Kurkuma"], steps: "Tofu zerbröseln und mit Gemüse, Kurkuma und Gewürzen kräftig anbraten." },
+      { name: "Weiße Bohnen Tomaten Pfanne", tags: ["High Protein", "Gemüsereich"], ingredients: ["Weiße Bohnen", "Tomaten", "Spinat", "Zucchini", "Zwiebel", "Knoblauch"], steps: "Gemüse anbraten, Bohnen und Tomaten zugeben und kurz einkochen lassen." },
+      { name: "Mediterrane Linsen Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Linsen", "Tomaten", "Gurke", "Paprika", "Rucola", "Oliven", "Zitrone"], steps: "Linsen garen und mit frischem Gemüse, Oliven und Zitronensaft vermengen." },
+      { name: "Brokkoli Tofu Erdnuss Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Brokkoli", "Reis", "Erdnussmus", "Sojasauce", "Limette"], steps: "Reis garen, Tofu und Brokkoli anbraten und mit einer Sauce aus Erdnussmus, Sojasauce und Limette servieren." },
+      { name: "Rote Linsen Suppe", tags: ["High Protein", "Gemüsereich"], ingredients: ["Rote Linsen", "Karotten", "Sellerie", "Tomaten", "Zwiebel", "Knoblauch"], steps: "Gemüse anschwitzen, Linsen und Tomaten zugeben, mit Wasser auffüllen und weich kochen." },
+      { name: "Kichererbsen Spinat Pfanne", tags: ["High Protein", "Schnell"], ingredients: ["Kichererbsen", "Spinat", "Tomaten", "Zwiebel", "Knoblauch", "Paprika"], steps: "Zwiebel und Knoblauch anbraten, Kichererbsen und Tomaten zugeben und zuletzt den Spinat unterheben." },
+      { name: "Tofu Fajita Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Paprika", "Mais", "Kidneybohnen", "Reis", "Avocado", "Limette"], steps: "Tofu und Paprika anbraten, mit Bohnen, Mais, Reis und Avocado als Bowl servieren." },
+      { name: "Bulgur Kichererbsen Salat", tags: ["Proteinreich", "Frisch"], ingredients: ["Bulgur", "Kichererbsen", "Tomaten", "Gurke", "Petersilie", "Zitrone"], steps: "Bulgur quellen lassen und mit Kichererbsen, Gemüse, Petersilie und Zitrone vermengen." },
+      { name: "Gemüse Couscous mit Kichererbsen", tags: ["Proteinreich", "Gemüsereich"], ingredients: ["Couscous", "Kichererbsen", "Zucchini", "Paprika", "Karotten", "Tomaten"], steps: "Couscous quellen lassen, Gemüse anbraten und mit Kichererbsen und Couscous vermengen." },
+      { name: "Süßkartoffel Bohnen Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Süßkartoffel", "Schwarze Bohnen", "Spinat", "Mais", "Tomaten", "Avocado"], steps: "Süßkartoffel garen und mit Bohnen, Gemüse und Avocado in einer Bowl anrichten." },
+      { name: "Erbsen Spinat Pasta", tags: ["Proteinreich", "Gemüsereich"], ingredients: ["Nudeln", "Erbsen", "Spinat", "Knoblauch", "Zitrone", "Cashewkerne"], steps: "Nudeln kochen, Erbsen und Spinat kurz garen und mit Knoblauch, Zitrone und Cashews vermengen." },
+      { name: "Tofu Tomaten Pasta", tags: ["High Protein"], ingredients: ["Nudeln", "Tofu", "Tomaten", "Spinat", "Knoblauch"], steps: "Tofu anbraten, Tomaten und Spinat zugeben und mit gekochten Nudeln vermengen." },
+      { name: "Vollkornpasta mit Linsen", tags: ["High Protein", "Ballaststoffreich"], ingredients: ["Vollkornnudeln", "Linsen", "Tomaten", "Zucchini", "Knoblauch", "Basilikum"], steps: "Linsen und Gemüse in Tomatensauce garen und mit Vollkornnudeln servieren." },
+      { name: "Gemüse Minestrone mit Bohnen", tags: ["High Protein", "Gemüsereich"], ingredients: ["Weiße Bohnen", "Karotten", "Sellerie", "Zucchini", "Tomaten", "Spinat", "Nudeln"], steps: "Gemüse und Bohnen in einer Tomatenbrühe garen, Nudeln zugeben und fertig kochen." },
+      { name: "Brokkoli Kichererbsen Ofenblech", tags: ["High Protein", "Gemüsereich"], ingredients: ["Kichererbsen", "Brokkoli", "Paprika", "Karotten", "Olivenöl", "Knoblauch"], steps: "Alles würzen, mit etwas Olivenöl vermengen und im Ofen rösten." },
+      { name: "Tofu Gemüse Curry", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Brokkoli", "Karotten", "Paprika", "Kokosmilch", "Currypulver", "Reis"], steps: "Tofu und Gemüse anbraten, Kokosmilch und Curry zugeben und mit Reis servieren." },
+      { name: "Linsen Gemüse Eintopf", tags: ["High Protein", "Gemüsereich"], ingredients: ["Linsen", "Kartoffeln", "Karotten", "Lauch", "Sellerie", "Zwiebel"], steps: "Gemüse und Linsen gemeinsam in Brühe weich kochen und kräftig abschmecken." },
+      { name: "Kidneybohnen Mais Salat", tags: ["High Protein", "Frisch"], ingredients: ["Kidneybohnen", "Mais", "Tomaten", "Gurke", "Paprika", "Limette"], steps: "Alle Zutaten vermengen und mit Limettensaft, Pfeffer und Kräutern abschmecken." },
+      { name: "Grüne Erbsen Kartoffel Bowl", tags: ["Proteinreich", "Gemüsereich"], ingredients: ["Erbsen", "Kartoffeln", "Brokkoli", "Spinat", "Gurke", "Senf"], steps: "Kartoffeln und Brokkoli garen und mit Erbsen, Spinat, Gurke und Senfdressing servieren." },
+      { name: "Tofu Quinoa Salat", tags: ["High Protein", "Frisch"], ingredients: ["Tofu", "Quinoa", "Gurke", "Tomaten", "Spinat", "Zitrone"], steps: "Quinoa garen, Tofu anbraten und mit Gemüse und Zitronensaft vermengen." },
+      { name: "Schwarze Bohnen Reis Pfanne", tags: ["High Protein", "Gemüsereich"], ingredients: ["Schwarze Bohnen", "Reis", "Paprika", "Tomaten", "Mais", "Zwiebel"], steps: "Zwiebel und Paprika anbraten, Bohnen, Mais, Tomaten und Reis zugeben und würzen." },
+      { name: "Kichererbsen Brokkoli Pasta", tags: ["High Protein", "Gemüsereich"], ingredients: ["Nudeln", "Kichererbsen", "Brokkoli", "Spinat", "Knoblauch", "Zitrone"], steps: "Nudeln und Brokkoli garen, mit Kichererbsen, Spinat, Knoblauch und Zitrone vermengen." },
+      { name: "Gemüsepfanne mit Räuchertofu", tags: ["High Protein", "Gemüsereich"], ingredients: ["Räuchertofu", "Brokkoli", "Zucchini", "Paprika", "Karotten", "Sojasauce"], steps: "Räuchertofu knusprig anbraten, Gemüse zugeben und mit Sojasauce abschmecken." },
+      { name: "Linsen Quinoa Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Linsen", "Quinoa", "Brokkoli", "Karotten", "Spinat", "Tahini"], steps: "Linsen und Quinoa garen, Gemüse dazugeben und mit Tahini als Bowl servieren." },
+      { name: "Kichererbsen Tomaten Eintopf", tags: ["High Protein", "Gemüsereich"], ingredients: ["Kichererbsen", "Tomaten", "Zucchini", "Spinat", "Zwiebel", "Knoblauch"], steps: "Zwiebel und Knoblauch anschwitzen, Gemüse, Kichererbsen und Tomaten zugeben und köcheln lassen." },
+      { name: "Tempeh Quinoa Bowl", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tempeh", "Quinoa", "Brokkoli", "Rotkohl", "Karotten", "Gurke"], steps: "Quinoa garen, Tempeh anbraten und mit viel frischem Gemüse als Bowl servieren." },
+      { name: "Bohnen Gemüse Wrap", tags: ["High Protein", "Gemüsereich"], ingredients: ["Kidneybohnen", "Vollkornwrap", "Paprika", "Tomaten", "Salat", "Avocado"], steps: "Bohnen erwärmen und zusammen mit Gemüse und Avocado in den Wrap füllen." },
+      { name: "Tofu Brokkoli Nudeln", tags: ["High Protein", "Gemüsereich"], ingredients: ["Tofu", "Nudeln", "Brokkoli", "Karotten", "Sojasauce", "Knoblauch"], steps: "Nudeln kochen, Tofu und Gemüse anbraten und alles mit Sojasauce vermengen." },
+      { name: "Linsen Süßkartoffel Curry", tags: ["High Protein", "Gemüsereich"], ingredients: ["Rote Linsen", "Süßkartoffel", "Spinat", "Tomaten", "Kokosmilch", "Currypulver"], steps: "Süßkartoffel und Linsen in Tomaten und Kokosmilch garen und zum Schluss Spinat unterheben." },
+      { name: "Kichererbsen Avocado Bowl", tags: ["Proteinreich", "Frisch"], ingredients: ["Kichererbsen", "Quinoa", "Avocado", "Gurke", "Tomaten", "Spinat"], steps: "Quinoa garen und mit Kichererbsen, Avocado und frischem Gemüse anrichten." }
     ];
 
     let pantry = JSON.parse(localStorage.getItem("veganPantry") || "[]");
@@ -1243,18 +1279,57 @@
 
     const ingredientAliases = {
       "Nudeln": ["nudeln", "pasta", "spaghetti", "penne", "fusilli", "macaroni", "tagliatelle"],
+      "Vollkornnudeln": ["vollkornnudeln", "vollkorn pasta", "vollkornpasta"],
       "Tomaten": ["tomate", "tomaten", "passierte tomaten", "tomatenstücke", "tomatensauce"],
-      "Tofu": ["tofu"],
+      "Tofu": ["tofu", "naturtofu"],
+      "Räuchertofu": ["räuchertofu", "raeuchertofu", "smoked tofu"],
+      "Tempeh": ["tempeh"],
       "Kokosmilch": ["kokosmilch"],
       "Kichererbsen": ["kichererbse", "kichererbsen"],
+      "Linsen": ["linse", "linsen", "berg linsen", "belugalinsen", "tellerlinsen"],
+      "Rote Linsen": ["rote linse", "rote linsen"],
+      "Kidneybohnen": ["kidneybohne", "kidneybohnen"],
+      "Schwarze Bohnen": ["schwarze bohne", "schwarze bohnen"],
+      "Weiße Bohnen": ["weiße bohne", "weiße bohnen", "weisse bohne", "weisse bohnen"],
+      "Edamame": ["edamame", "sojabohnen"],
+      "Erbsen": ["erbse", "erbsen"],
       "Paprika": ["paprika"],
       "Zucchini": ["zucchini"],
-      "Reis": ["reis"],
+      "Brokkoli": ["brokkoli", "broccoli"],
+      "Karotten": ["karotte", "karotten", "möhre", "möhren", "moehre", "moehren"],
+      "Sellerie": ["sellerie", "knollensellerie", "stangensellerie"],
+      "Zwiebel": ["zwiebel", "zwiebeln"],
+      "Gurke": ["gurke", "gurken", "salatgurke"],
+      "Rotkohl": ["rotkohl", "blaukraut"],
+      "Kartoffeln": ["kartoffel", "kartoffeln"],
+      "Süßkartoffel": ["süßkartoffel", "süßkartoffeln", "suesskartoffel", "suesskartoffeln"],
+      "Reis": ["reis", "basmatireis", "jasminreis", "vollkornreis"],
+      "Quinoa": ["quinoa"],
+      "Bulgur": ["bulgur"],
+      "Couscous": ["couscous", "cous cous"],
+      "Vollkornwrap": ["vollkornwrap", "vollkorn wrap", "wrap"],
       "Sojasauce": ["sojasauce", "soja sauce"],
-      "Spinat": ["spinat"],
+      "Spinat": ["spinat", "babyspinat"],
+      "Rucola": ["rucola", "rauke"],
+      "Salat": ["salat", "blattsalat", "kopfsalat"],
+      "Mais": ["mais", "zuckermais"],
+      "Avocado": ["avocado", "avocados"],
+      "Oliven": ["olive", "oliven"],
+      "Petersilie": ["petersilie"],
+      "Basilikum": ["basilikum"],
+      "Lauch": ["lauch", "porree"],
       "Knoblauch": ["knoblauch"],
+      "Ingwer": ["ingwer"],
+      "Zitrone": ["zitrone", "zitronensaft"],
+      "Limette": ["limette", "limettensaft"],
       "Olivenöl": ["olivenöl", "olivenoel"],
-      "Currypulver": ["currypulver", "curry"]
+      "Currypulver": ["currypulver", "curry"],
+      "Kurkuma": ["kurkuma"],
+      "Sesam": ["sesam"],
+      "Erdnussmus": ["erdnussmus", "erdnussbutter"],
+      "Cashewkerne": ["cashew", "cashews", "cashewkerne"],
+      "Tahini": ["tahini", "sesammus"],
+      "Senf": ["senf"]
     };
 
     function pantryHasIngredient(ingredient) {
@@ -1283,35 +1358,43 @@
       if (!pantry.length) {
         container.innerHTML = `
           <div class="card">
-            <div class="empty">Dein Vorrat ist noch leer. Füge zuerst vegane Produkte oder Zutaten hinzu. Danach werden passende Rezepte vorgeschlagen.</div>
+            <div class="empty">Dein Vorrat ist noch leer. Füge zuerst vegane Produkte oder Zutaten hinzu. Danach werden 8 passende Rezepte vorgeschlagen.</div>
           </div>`;
         return;
       }
 
       const scored = recipes
         .map(recipe => ({ recipe, ...getRecipeScore(recipe) }))
-        .sort((a, b) =>
-          b.present.length - a.present.length ||
-          b.percentage - a.percentage ||
-          a.missing.length - b.missing.length
-        );
+        .sort((a, b) => {
+          const aHealthy = (a.recipe.tags || []).includes("High Protein") ? 1 : 0;
+          const bHealthy = (b.recipe.tags || []).includes("High Protein") ? 1 : 0;
+          const aVeggie = (a.recipe.tags || []).includes("Gemüsereich") ? 1 : 0;
+          const bVeggie = (b.recipe.tags || []).includes("Gemüsereich") ? 1 : 0;
+          return b.present.length - a.present.length ||
+            b.percentage - a.percentage ||
+            a.missing.length - b.missing.length ||
+            bHealthy - aHealthy ||
+            bVeggie - aVeggie;
+        });
 
       const matching = scored.filter(item => item.present.length > 0);
-      const visibleRecipes = matching.length ? matching : scored;
+      const ordered = matching.length >= 8
+        ? matching
+        : [...matching, ...scored.filter(item => item.present.length === 0)];
+      const visibleRecipes = ordered.slice(0, 8);
 
-      const intro = matching.length
-        ? `<div class="card"><strong>${matching.length} passende Rezept${matching.length === 1 ? "" : "e"} gefunden</strong><p class="muted" style="margin-bottom:0">Auch Rezepte mit fehlenden Zutaten werden angezeigt. Diese Zutaten kannst du direkt auf die Einkaufsliste setzen.</p></div>`
-        : `<div class="card"><strong>Noch kein direkter Rezepttreffer</strong><p class="muted" style="margin-bottom:0">Für deine aktuellen Produkte gibt es noch keine direkte Übereinstimmung. Hier sind trotzdem vegane Rezeptideen, deren fehlende Zutaten du zur Einkaufsliste hinzufügen kannst.</p></div>`;
+      const intro = `<div class="card"><strong>8 Rezeptvorschläge für deinen Vorrat</strong><p class="muted" style="margin-bottom:0">Gesunde, gemüselastige und proteinreiche Rezepte werden bevorzugt. Fehlende Zutaten kannst du direkt zur Einkaufsliste hinzufügen.</p></div>`;
 
       container.innerHTML = intro + visibleRecipes.map(({ recipe, present, missing, percentage }, index) => `
         <div class="card recipe">
           <h3>${escapeHtml(recipe.name)}</h3>
           <span class="tag">${percentage}% vorhanden</span>
+          ${(recipe.tags || []).map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
           ${missing.length
             ? `<span class="tag">${missing.length} Zutat${missing.length === 1 ? "" : "en"} fehlt${missing.length === 1 ? "" : "en"}</span>`
             : `<span class="tag">Sofort kochbar</span>`}
-          <p><strong>Aus deinem Vorrat:</strong> ${present.length ? present.map(escapeHtml).join(", ") : "keine passende Zutat"}</p>
-          <p><strong>Fehlende Zutaten:</strong> ${missing.length ? missing.map(escapeHtml).join(", ") : "keine"}</p>
+          <p><strong>Bereits vorhanden:</strong> ${present.length ? present.map(escapeHtml).join(", ") : "keine passende Zutat"}</p>
+          <p><strong>Benötigt, aber noch nicht vorhanden:</strong> ${missing.length ? missing.map(escapeHtml).join(", ") : "keine"}</p>
           <p class="muted">${escapeHtml(recipe.steps)}</p>
           ${missing.length
             ? `<button data-recipe-index="${index}">${missing.length} fehlende Zutat${missing.length === 1 ? "" : "en"} zur Einkaufsliste</button>`
